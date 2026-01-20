@@ -1,31 +1,2057 @@
-# Codebase Snapshot: governance
-Created: Mon Jan 19 07:51:08 AM EST 2026
-Target: /home/levijosman/depin-network/codebase/ioi-network/apps/governance
+# Codebase Snapshot: apps
+Created: Tue Jan 20 12:40:08 AM EST 2026
+Target: /home/levijosman/depin-network/codebase/ioi-network/apps
 Line threshold for included files: 1800
 
 ## Summary Statistics
 
-* Total files: 11193
-* Total directories: 554
+* Total files: 20802
+* Total directories: 1101
 
-### Directory: /home/levijosman/depin-network/codebase/ioi-network/apps/governance
+### Directory: /home/levijosman/depin-network/codebase/ioi-network/apps
 
-#### Directory: assets
+#### Directory: documentation
 
-##### File: assets/ioi-logo-dark.svg
-##*Size: 8.0K, Lines: 73, Type: SVG Scalable Vector Graphics image*
+##### Directory: documentation/node_modules (skipped)
+
+##### Directory: documentation/sources
+
+###### Directory: documentation/sources/crates
+
+####### Directory: documentation/sources/crates/consensus
+
+######## Directory: documentation/sources/crates/consensus/src
+
+######### File: documentation/sources/crates/consensus/src/admft.rs
+######*Size: 4.0K, Lines: 53, Type: ASCII text*
+
+```rust
+
+// Copyright (c) 2024 IOI Network. All rights reserved.
+
+use crate::guardian::{GuardianClient, GuardianSignature};
+use crate::types::{Block, BlockHeight, ValidatorId};
+
+/// The A-DMFT Consensus Engine.
+pub struct AdmftConsensus {
+    validator_id: ValidatorId,
+    guardian: GuardianClient,
+    state: ConsensusState,
+}
+
+impl AdmftConsensus {
+    /// Proposes a new block anchored by the local Guardian.
+    pub fn propose_block(&mut self, parent: &Block, txs: Vec<Transaction>) -> Result<Block, Error> {
+        let height = parent.height + 1;
+        
+        // 1. Execute block to get new Trace Hash
+        let (execution_root, trace_hash) = self.execute_and_trace(&txs);
+        
+        // 2. Request Monotonic Signature from Guardian
+        // The Guardian enforces that `height` > `last_signed_height`
+        let signature = self.guardian.sign_proposal(
+            height,
+            execution_root,
+            trace_hash
+        )?;
+
+        Ok(Block {
+            height,
+            parent_hash: parent.hash(),
+            transactions: txs,
+            guardian_signature: signature,
+            trace_hash,
+        })
+    }
+
+    /// Verifies a block proposed by a peer.
+    pub fn verify_block(&self, block: &Block) -> bool {
+        // Verify the signature against the validator's known Guardian PubKey
+        // The signature must include the monotonic counter to be valid.
+        block.guardian_signature.verify(
+            block.hash(),
+            self.get_validator_key(block.proposer)
+        )
+    }
+
+    fn execute_and_trace(&self, txs: &[Transaction]) -> (Hash, Hash) {
+        // ...
+        (Hash::default(), Hash::default())
+    }
+}
+```
+
+####### Directory: documentation/sources/crates/execution
+
+######## Directory: documentation/sources/crates/execution/src
+
+######### Directory: documentation/sources/crates/execution/src/app
+
+########## File: documentation/sources/crates/execution/src/app/state_machine.rs
+#######*Size: 4.0K, Lines: 70, Type: ASCII text*
+
+```rust
+
+// Copyright (c) 2024 IOI Network. All rights reserved.
+
+use crate::mv_memory::{MvMemory, Version};
+use crate::scheduler::{Scheduler, Task};
+use crate::types::{Transaction, ExecutionResult};
+
+/// The Block-STM Parallel Execution Engine.
+pub struct BlockStmEngine {
+    memory: MvMemory,
+    scheduler: Scheduler,
+    concurrency_level: usize,
+}
+
+impl BlockStmEngine {
+    pub fn new(txs: Vec<Transaction>, concurrency_level: usize) -> Self {
+        Self {
+            memory: MvMemory::new(),
+            scheduler: Scheduler::new(txs),
+            concurrency_level,
+        }
+    }
+
+    /// Executes a block of transactions in parallel using optimistic concurrency.
+    pub fn execute_block(&mut self) -> Vec<ExecutionResult> {
+        let pool = rayon::ThreadPoolBuilder::new()
+            .num_threads(self.concurrency_level)
+            .build()
+            .unwrap();
+
+        pool.scope(|s| {
+            for _ in 0..self.concurrency_level {
+                s.spawn(|_| self.worker_loop());
+            }
+        });
+
+        self.memory.finalize_block()
+    }
+
+    fn worker_loop(&self) {
+        while let Some(task) = self.scheduler.next_task() {
+            match task {
+                Task::Execute(tx_idx) => {
+                    let tx = self.scheduler.get_tx(tx_idx);
+                    // Optimistic execution against multi-version memory
+                    let result = self.execute_transaction(tx, &self.memory);
+                    
+                    if self.memory.record_execution(tx_idx, result) {
+                        // If validation passes, we might need to re-validate higher txs
+                        self.scheduler.check_dependencies(tx_idx);
+                    } else {
+                        // Validation failed immediately
+                        self.scheduler.mark_for_retry(tx_idx);
+                    }
+                }
+                Task::Validate(tx_idx) => {
+                    if !self.memory.validate_read_set(tx_idx) {
+                        self.scheduler.mark_for_retry(tx_idx);
+                    }
+                }
+            }
+        }
+    }
+
+    fn execute_transaction(&self, tx: &Transaction, memory: &MvMemory) -> ExecutionResult {
+        // VM Logic placeholder
+        // ...
+        ExecutionResult::default()
+    }
+}
+```
+
+####### Directory: documentation/sources/crates/scs
+
+######## Directory: documentation/sources/crates/scs/src
+
+######### File: documentation/sources/crates/scs/src/store.rs
+######*Size: 4.0K, Lines: 58, Type: ASCII text*
+
+```rust
+
+// Copyright (c) 2024 IOI Network. All rights reserved.
+
+use crate::index::MHnswIndex;
+use crate::types::{Frame, FrameId, RetrievalProof, Query};
+use rocksdb::DB;
+
+/// The Sovereign Context Store.
+/// Combines persistent Frame storage with a Verifiable Vector Index.
+pub struct ScsStore {
+    db: DB,
+    vector_index: MHnswIndex,
+}
+
+impl ScsStore {
+    pub fn open(path: &str) -> Self {
+        // Initialize RocksDB and load the vector index
+        Self {
+            db: DB::open_default(path).unwrap(),
+            vector_index: MHnswIndex::load(path),
+        }
+    }
+
+    /// Appends a new immutable frame to the agent's context.
+    pub fn append_frame(&mut self, frame: Frame) -> Result<FrameId, Error> {
+        let frame_id = frame.calculate_id();
+        
+        // 1. Commit raw frame to disk
+        self.db.put(frame_id.as_bytes(), bincode::serialize(&frame)?)?;
+        
+        // 2. Index frame embeddings in mHNSW
+        for embedding in frame.embeddings() {
+            self.vector_index.insert(embedding, frame_id)?;
+        }
+        
+        Ok(frame_id)
+    }
+
+    /// Performs a verifiable vector search over the agent's memory.
+    pub fn search(&self, query: Query) -> (Vec<Frame>, RetrievalProof) {
+        // Perform Approximate Nearest Neighbor search
+        let results = self.vector_index.search(query.vector, query.k);
+        
+        // Generate a Merkle proof attesting to the correctness of the search traversal
+        let proof = self.vector_index.generate_proof(&results);
+        
+        let frames = results.iter()
+            .map(|id| self.get_frame(id))
+            .collect();
+
+        (frames, proof)
+    }
+
+    fn get_frame(&self, id: &FrameId) -> Frame {
+        // ...
+        Frame::default()
+    }
+}
+```
+
+######### File: documentation/sources/crates/scs/src/types.rs
+######*Size: 4.0K, Lines: 35, Type: ASCII text*
+
+```rust
+
+// Copyright (c) 2024 IOI Network. All rights reserved.
+
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Frame {
+    pub id: FrameId,
+    pub timestamp: u64,
+    pub observations: Vec<Perception>,
+    pub thoughts: Vec<ReasoningChain>,
+    pub actions: Vec<ActionDigest>,
+    pub parent_hash: Hash,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FrameId(String);
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RetrievalProof {
+    pub root: Hash,
+    pub proof: Vec<Hash>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Query {
+    pub vector: Vec<f32>,
+    pub k: usize,
+}
+
+// Type aliases for demo purposes
+pub type Perception = String;
+pub type ReasoningChain = String;
+pub type ActionDigest = String;
+pub type Hash = String;
+```
+
+####### Directory: documentation/sources/crates/services
+
+######## Directory: documentation/sources/crates/services/src
+
+######### Directory: documentation/sources/crates/services/src/agentic
+
+########## File: documentation/sources/crates/services/src/agentic/rules.rs
+#######*Size: 4.0K, Lines: 82, Type: ASCII text*
+
+```rust
+
+// Copyright (c) 2024 IOI Network. All rights reserved.
+
+use serde::{Deserialize, Serialize};
+use crate::scs::SovereignContext;
+use crate::types::{AgentId, ResourceId, SignatureHash};
+
+/// The outcome of evaluating a firewall rule against an operation.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum Verdict {
+    /// Operation proceeds normally.
+    Allow,
+
+    /// Operation is blocked immediately.
+    /// The violation is cryptographically committed to the audit log.
+    Block(DenyReason),
+
+    /// Operation is halted until an explicit approval is received.
+    /// Triggers a 2FA request to the user's local device or Guardian.
+    RequireApproval(ApprovalRequest),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ActionRules {
+    pub id: String,
+    pub conditions: Vec<RuleCondition>,
+    pub verdict: Verdict,
+    pub priority: u8,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum RuleCondition {
+    /// Semantic target matching (e.g., "gui::click", "ucp::checkout")
+    TargetMatch(ActionTarget),
+    
+    /// Matches specific agents or groups in the swarm DAG.
+    AgentMatch(AgentPattern),
+    
+    /// Matches the resource being accessed (e.g. memory, network, IPC).
+    ResourceMatch(ResourceId),
+    
+    /// Ensures the operation stays within gas limits.
+    MaxComputeBudget(u64),
+    
+    /// Advanced: Checks if the call stack matches a verified topology.
+    GraphTopologyVerify {
+        required_depth: u8,
+        root_signature: SignatureHash,
+    }
+}
+
+pub struct FirewallEngine {
+    policy_cache: LruCache<AgentId, Vec<ActionRules>>,
+}
+
+impl FirewallEngine {
+    pub fn new() -> Self {
+        Self {
+            policy_cache: LruCache::new(1000),
+        }
+    }
+
+    /// The core evaluation loop for the Agency Firewall.
+    pub fn evaluate(&self, ctx: &SovereignContext, op: &Operation) -> Verdict {
+        let rules = self.get_policy(ctx.agent_id);
+        
+        for rule in rules {
+            if self.matches(rule, op) {
+                // First-match wins logic for deterministic execution
+                return rule.verdict.clone();
+            }
+        }
+        
+        // Zero Trust: Block if no rules match
+        Verdict::Block(DenyReason::NoMatchingPolicy)
+    }
+
+    fn matches(&self, rule: &ActionRules, op: &Operation) -> bool {
+        // Implementation of condition matching logic...
+        true
+    }
+}
+```
+
+######### Directory: documentation/sources/crates/services/src/identity
+
+########## File: documentation/sources/crates/services/src/identity/mod.rs
+#######*Size: 4.0K, Lines: 66, Type: ASCII text*
+
+```rust
+
+// Copyright (c) 2024 IOI Network. All rights reserved.
+
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum SignatureSuite {
+    Ed25519,
+    MlDsa44, // Post-Quantum (Dilithium)
+    Hybrid,  // Ed25519 + ML-DSA-44
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IdentityRecord {
+    pub agent_id: AgentId,
+    pub current_key: PublicKey,
+    pub suite: SignatureSuite,
+    pub rotation_state: RotationState,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum RotationState {
+    Stable,
+    InGracePeriod {
+        new_key: PublicKey,
+        rem_blocks: u32,
+    },
+}
+
+pub struct IdentityHub {
+    store: IdentityStore,
+}
+
+impl IdentityHub {
+    pub fn initiate_rotation(&mut self, agent: AgentId, new_key: PublicKey, sig_old: Signature, sig_new: Signature) -> Result<(), Error> {
+        let mut record = self.store.get(agent)?;
+        
+        // Validate proofs of ownership for both keys
+        self.verify(record.current_key, &sig_old)?;
+        self.verify(new_key, &sig_new)?;
+        
+        // Enter Grace Period
+        record.rotation_state = RotationState::InGracePeriod {
+            new_key,
+            rem_blocks: 1000, // ~1 hour
+        };
+        
+        self.store.update(agent, record);
+        Ok(())
+    }
+
+    pub fn on_end_block(&mut self) {
+        // Process active rotations
+        for mut record in self.store.iter_mut() {
+            if let RotationState::InGracePeriod { new_key, rem_blocks } = record.rotation_state {
+                if rem_blocks == 0 {
+                    // Finalize Rotation
+                    record.current_key = new_key;
+                    record.rotation_state = RotationState::Stable;
+                } else {
+                    record.rotation_state = RotationState::InGracePeriod { new_key, rem_blocks: rem_blocks - 1 };
+                }
+            }
+        }
+    }
+}
+```
+
+##### Directory: documentation/src
+
+###### Directory: documentation/src/components
+
+####### Directory: documentation/src/components/ui
+
+###### Directory: documentation/src/core
+
+####### File: documentation/src/core/constants.tsx
+####*Size: 8.0K, Lines: 143, Type: Java source, ASCII text*
+
+```
+// File: src/core/constants.tsx
+import React from 'react';
+import { 
+  Code2, 
+  Cpu, 
+  Layers, 
+  Terminal, 
+  Shield, 
+  Database, 
+  Globe, 
+  Fingerprint,
+  Zap,
+  Box,
+  FileJson
+} from 'lucide-react';
+import { NavigationTab, SidebarSection, SourceConfig } from './types';
+
+const src = (repo: 'kernel' | 'swarm' | 'ddk', path: string): SourceConfig => ({ repo, path });
+
+export const SIDEBAR_DATA: Record<NavigationTab, SidebarSection> = {
+  [NavigationTab.SWARM]: {
+    id: 'frameworkSidebar',
+    label: 'Swarm SDK',
+    color: 'text-blue-400',
+    icon: <Code2 className="w-4 h-4" />,
+    items: [
+      { id: 'sdk/overview', label: 'Overview', type: 'doc', source: src('swarm', 'src/ioi_swarm/__init__.py'), description: 'Entry point for the IOI Swarm SDK.' },
+      { id: 'sdk/quickstart-python', label: 'Quickstart (Python)', type: 'doc', source: src('swarm', 'README.md'), description: 'Initial setup for Python agent builders.' },
+      {
+        id: 'core-primitives',
+        label: 'Core Primitives',
+        type: 'category',
+        items: [
+          { id: 'sdk/agents', label: 'Agents', type: 'doc', source: src('swarm', 'src/ioi_swarm/agent.py') },
+          { id: 'sdk/tools', label: 'Tools', type: 'doc', source: src('swarm', 'src/ioi_swarm/tools.py') },
+          { id: 'sdk/client', label: 'Client', type: 'doc', source: src('swarm', 'src/ioi_swarm/client.py') },
+          { id: 'sdk/types', label: 'Types', type: 'doc', source: src('swarm', 'src/ioi_swarm/types.py') },
+        ],
+      },
+      {
+        id: 'ghost-mode',
+        label: 'Ghost Mode',
+        type: 'category',
+        items: [
+          { id: 'sdk/ghost/trace-recording', label: 'Trace Recording', type: 'doc', source: src('swarm', 'src/ioi_swarm/ghost.py') },
+          { id: 'sdk/ghost/policy-synthesis', label: 'Policy Synthesis', type: 'doc', source: src('kernel', 'crates/cli/src/commands/policy.rs') },
+        ],
+      },
+    ],
+  },
+  [NavigationTab.KERNEL]: {
+    id: 'kernelSidebar',
+    label: 'Kernel & Node',
+    color: 'text-orange-400',
+    icon: <Cpu className="w-4 h-4" />,
+    items: [
+      { id: 'kernel/architecture', label: 'Architecture', type: 'doc', source: src('kernel', 'crates/node/src/lib.rs'), description: 'The Triadic Model runtime specification.' },
+      { id: 'kernel/installation', label: 'Installation', type: 'doc', source: src('kernel', 'Dockerfile'), description: 'Build instructions for node operators.' },
+      {
+        id: 'execution',
+        label: 'Execution Engine',
+        type: 'category',
+        items: [
+          { id: 'kernel/execution/parallel', label: 'Parallel (Block-STM)', type: 'doc', source: src('kernel', 'crates/execution/src/app/state_machine.rs') },
+          { id: 'kernel/execution/scheduler', label: 'Scheduler', type: 'doc', source: src('kernel', 'crates/execution/src/scheduler.rs') },
+        ]
+      },
+      {
+        id: 'firewall',
+        label: 'Agency Firewall',
+        type: 'category',
+        items: [
+          { id: 'kernel/firewall/rules', label: 'Action Rules', type: 'doc', source: src('kernel', 'crates/services/src/agentic/rules.rs') },
+          { id: 'kernel/firewall/scrubber', label: 'Scrubber', type: 'doc', source: src('kernel', 'crates/services/src/agentic/scrubber.rs') },
+        ],
+      },
+      {
+        id: 'scs',
+        label: 'Sovereign Context (SCS)',
+        type: 'category',
+        items: [
+          { id: 'kernel/storage/scs', label: 'Verifiable Store', type: 'doc', source: src('kernel', 'crates/scs/src/types.rs') },
+          { id: 'kernel/scs/indexing', label: 'Vector Indexing (mHNSW)', type: 'doc', source: src('kernel', 'crates/scs/src/index.rs') },
+        ],
+      },
+      {
+        id: 'consensus',
+        label: 'Consensus (A-DMFT)',
+        type: 'category',
+        items: [
+          { id: 'kernel/consensus/admft', label: 'Guardian Specs', type: 'doc', source: src('kernel', 'crates/consensus/src/admft.rs') },
+          { id: 'kernel/consensus/slashing', label: 'Slashing', type: 'doc', source: src('kernel', 'crates/consensus/src/common/penalty.rs') },
+        ],
+      },
+      {
+        id: 'identity',
+        label: 'Identity & Security',
+        type: 'category',
+        items: [
+          { id: 'kernel/identity/pqc', label: 'PQC Migration', type: 'doc', source: src('kernel', 'crates/services/src/identity/mod.rs') },
+        ]
+      }
+    ],
+  },
+  [NavigationTab.DDK]: {
+    id: 'ddkSidebar',
+    label: 'Driver Kit',
+    color: 'text-emerald-400',
+    icon: <Layers className="w-4 h-4" />,
+    items: [
+      { id: 'ddk/overview', label: 'Overview', type: 'doc', source: src('ddk', 'src/lib.rs') },
+      {
+        id: 'drivers',
+        label: 'Standard Drivers',
+        type: 'category',
+        items: [
+          { id: 'ddk/drivers/browser', label: 'Browser', type: 'doc', source: src('ddk', 'src/browser.rs') },
+          { id: 'ddk/drivers/gui', label: 'GUI Engine', type: 'doc', source: src('ddk', 'src/gui/mod.rs') },
+          { id: 'ddk/drivers/os', label: 'OS Bridge', type: 'doc', source: src('ddk', 'src/os.rs') },
+        ],
+      },
+      {
+        id: 'ibc',
+        label: 'IBC & Interop',
+        type: 'category',
+        items: [
+          { id: 'ddk/ibc/light-clients', label: 'Light Clients', type: 'doc', source: src('kernel', 'crates/services/ibc/light_clients/') },
+          { id: 'ddk/ibc/zk-relay', label: 'ZK Relay', type: 'doc', source: src('kernel', 'crates/api/src/ibc/zk.rs') },
+        ],
+      },
+    ],
+  },
+  [NavigationTab.API]: {
+    id: 'apiSidebar',
+    label: 'API Reference',
+    color: 'text-purple-400',
+    icon: <Terminal className="w-4 h-4" />,
+    items: [
+      { id: 'api/blockchain-proto', label: 'Blockchain Proto', type: 'doc', source: src('kernel', 'crates/ipc/proto/blockchain.proto') },
+      { id: 'api/control-proto', label: 'Control Proto', type: 'doc', source: src('kernel', 'crates/ipc/proto/control.proto') },
+      { id: 'api/public-proto', label: 'Public Proto', type: 'doc', source: src('kernel', 'crates/ipc/proto/public.proto') },
+    ],
+  },
+};```
+
+####### File: documentation/src/core/network-config.tsx
+####*Size: 4.0K, Lines: 62, Type: Java source, ASCII text*
+
+```
+import React from 'react';
+import { BookOpen, Scale, ShieldCheck, LayoutGrid, Terminal } from 'lucide-react';
+
+export type NetworkAppId = 'hub' | 'governance' | 'docs' | 'explorer' | 'studio';
+
+export interface NetworkApp {
+  id: NetworkAppId;
+  name: string;
+  url: string; // Production URL
+  devUrl: string; // Localhost URL
+  icon: React.ReactNode;
+  description: string;
+}
+
+export const IOI_APPS: NetworkApp[] = [
+  {
+    id: 'hub',
+    name: 'IOI Hub',
+    url: 'https://app.ioi.network',
+    devUrl: 'http://localhost:3000',
+    icon: <LayoutGrid className="w-4 h-4" />,
+    description: 'Dashboard & Wallet'
+  },
+  {
+    id: 'governance',
+    name: 'Governance',
+    url: 'https://gov.ioi.network',
+    devUrl: 'http://localhost:3001',
+    icon: <Scale className="w-4 h-4" />,
+    description: 'DAO & Proposals'
+  },
+  {
+    id: 'docs',
+    name: 'Documentation',
+    url: 'https://docs.ioi.network',
+    devUrl: 'http://localhost:3002',
+    icon: <BookOpen className="w-4 h-4" />,
+    description: 'Kernel & SDK Refs'
+  },
+  {
+    id: 'explorer',
+    name: 'Block Explorer',
+    url: 'https://scan.ioi.network',
+    devUrl: 'http://localhost:3003',
+    icon: <Terminal className="w-4 h-4" />,
+    description: 'Transaction Ledger'
+  },
+  {
+    id: 'studio',
+    name: 'Agent Studio',
+    url: 'https://studio.ioi.network',
+    devUrl: 'http://localhost:3004',
+    icon: <ShieldCheck className="w-4 h-4" />,
+    description: 'Underwriting & Deploy'
+  }
+];
+
+// Helper to get correct URL based on environment
+export const getAppUrl = (app: NetworkApp) => {
+  // In a real build, you'd check process.env.NODE_ENV
+  const isDev = window.location.hostname === 'localhost'; 
+  return isDev ? app.devUrl : app.url;
+};```
+
+####### File: documentation/src/core/types.ts
+####*Size: 4.0K, Lines: 30, Type: Java source, ASCII text*
+
+```typescript
+import React from 'react';
+
+export enum NavigationTab {
+  SWARM = 'frameworkSidebar',
+  KERNEL = 'kernelSidebar',
+  DDK = 'ddkSidebar',
+  API = 'apiSidebar'
+}
+
+export interface SourceConfig {
+  repo: 'kernel' | 'swarm' | 'ddk';
+  path: string;
+  branch?: string;
+}
+
+export interface DocItem {
+  id: string;
+  label: string;
+  type: 'doc' | 'category';
+  source?: SourceConfig;
+  items?: DocItem[];
+  description?: string;
+}
+
+export interface SidebarSection {
+  id: string;
+  label: string;
+  color: string;
+  icon: React.ReactNode;
+  items: DocItem[];
+}```
+
+####### File: documentation/src/core/utils.tsx
+####*Size: 4.0K, Lines: 46, Type: Java source, ASCII text*
+
+```
+import { DocItem } from './types';
+
+export interface SyncResult {
+  status: 'synced' | 'drift' | 'verifying' | 'unknown';
+  missingSymbols: string[];
+}
+
+export const checkContentIntegrity = (doc: string, source: string): SyncResult => {
+  if (!doc || !source) return { status: 'unknown', missingSymbols: [] };
+
+  const rustBlocks: string[] = doc.match(/```rust([\s\S]*?)```/g) || [];
+  const missing: string[] = [];
+  
+  rustBlocks.forEach(block => {
+    const regex = /(?:enum|struct|fn)\s+(\w+)/g;
+    let match;
+    while ((match = regex.exec(block)) !== null) {
+        const name = match[1];
+        if (!source.includes(name)) {
+            missing.push(name);
+        }
+    }
+  });
+
+  if (missing.length > 0) return { status: 'drift', missingSymbols: [...new Set(missing)] };
+  if (rustBlocks.length > 0) return { status: 'synced', missingSymbols: [] };
+  return { status: 'unknown', missingSymbols: [] };
+};
+
+export const flattenDocs = (items: DocItem[]): DocItem[] => {
+  return items.reduce((acc, item) => {
+    if (item.type === 'doc') acc.push(item);
+    if (item.items) acc.push(...flattenDocs(item.items));
+    return acc;
+  }, [] as DocItem[]);
+};
+
+export const findNodePath = (items: DocItem[], id: string): DocItem[] | null => {
+  for (const item of items) {
+    if (item.id === id) return [item];
+    if (item.items) {
+      const childPath = findNodePath(item.items, id);
+      if (childPath) return [item, ...childPath];
+    }
+  }
+  return null;
+};```
+
+###### Directory: documentation/src/features
+
+####### Directory: documentation/src/features/content
+
+######## File: documentation/src/features/content/SourceStatus.tsx
+#####*Size: 8.0K, Lines: 97, Type: Java source, ASCII text*
+
+```
+// File: src/features/content/SourceStatus.tsx
+import React, { useState } from 'react';
+import { CheckCircle2, AlertTriangle, FileCode, GitBranch, ChevronDown, RefreshCw } from 'lucide-react';
+
+interface SourceStatusProps {
+  status: 'synced' | 'drift' | 'verifying' | 'unknown';
+  path: string;
+  repo: string;
+  missingSymbols?: string[];
+  onViewSource?: () => void;
+}
+
+export const SourceStatus = ({ status, path, repo, missingSymbols = [], onViewSource }: SourceStatusProps) => {
+  const [expanded, setExpanded] = useState(false);
+  const isDrift = status === 'drift';
+  
+  return (
+    <div className={`
+      mb-10 rounded-lg border overflow-hidden transition-all duration-300
+      ${isDrift ? 'border-rose-500/30 bg-rose-500/5' : 'border-zinc-800 bg-zinc-900/30'}
+    `}>
+      {/* Header */}
+      <div className={`
+        px-4 py-3 border-b flex items-center justify-between
+        ${isDrift ? 'border-rose-500/20 bg-rose-500/10' : 'border-zinc-800 bg-zinc-900/50'}
+      `}>
+        <div className="flex items-center gap-2">
+          <FileCode className={`w-4 h-4 ${isDrift ? 'text-rose-400' : 'text-zinc-400'}`} />
+          <span className={`text-xs font-medium ${isDrift ? 'text-rose-200' : 'text-zinc-300'}`}>
+            Source Mapping
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          {status === 'verifying' ? (
+             <span className="flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-bold bg-zinc-800 text-zinc-400 border border-zinc-700 uppercase tracking-wide">
+               <RefreshCw className="w-3 h-3 animate-spin" /> Verifying
+             </span>
+          ) : isDrift ? (
+            <button 
+              onClick={() => setExpanded(!expanded)}
+              className="flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-bold bg-rose-500/20 text-rose-400 border border-rose-500/20 uppercase tracking-wide hover:bg-rose-500/30 transition-colors"
+            >
+              <AlertTriangle className="w-3 h-3" /> Drift Detected
+              <ChevronDown className={`w-3 h-3 transition-transform ${expanded ? 'rotate-180' : ''}`} />
+            </button>
+          ) : (
+            <span className="flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 uppercase tracking-wide">
+              <CheckCircle2 className="w-3 h-3" /> Synced
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Content */}
+      <div className="p-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3 text-xs font-mono">
+            <GitBranch className="w-3.5 h-3.5 text-zinc-600" />
+            <span className="text-zinc-500">{repo}</span>
+            <span className="text-zinc-700">/</span>
+            <span className="text-zinc-300">{path}</span>
+          </div>
+          
+          {onViewSource && (
+            <button 
+              onClick={onViewSource}
+              className="text-[10px] font-bold uppercase tracking-wider text-zinc-500 hover:text-white transition-colors"
+            >
+              View Code
+            </button>
+          )}
+        </div>
+
+        {/* Drift Details - The HUD */}
+        {isDrift && expanded && missingSymbols.length > 0 && (
+          <div className="mt-4 pt-4 border-t border-rose-500/20 animate-in slide-in-from-top-2">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="w-4 h-4 text-rose-500 mt-0.5 shrink-0" />
+              <div>
+                <p className="text-xs text-rose-200 font-medium mb-1">Documentation Outdated</p>
+                <p className="text-[11px] text-zinc-400 mb-3 leading-relaxed">
+                  The following kernel definitions referenced in this documentation were not found in the source file.
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {missingSymbols.map(sym => (
+                    <code key={sym} className="text-[10px] font-mono text-rose-300 bg-rose-950/40 px-1.5 py-0.5 rounded border border-rose-900/50">
+                      {sym}
+                    </code>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};```
+
+####### Directory: documentation/src/features/navigation
+
+######## File: documentation/src/features/navigation/DocsSidebar.tsx
+#####*Size: 4.0K, Lines: 90, Type: Java source, ASCII text*
+
+```
+import React, { useState } from 'react';
+import { ChevronDown, Folder, FolderOpen } from 'lucide-react';
+import { DocItem, SidebarSection } from '../../core/types';
+import { SyncResult } from '../../core/utils';
+
+interface SidebarProps {
+  section: SidebarSection;
+  activeDocId: string;
+  onSelect: (id: string) => void;
+  syncStatuses: Record<string, SyncResult>; 
+}
+
+export const DocsSidebar = ({ section, activeDocId, onSelect, syncStatuses }: SidebarProps) => {
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+
+  const toggle = (id: string) => {
+    setExpanded(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  const renderItems = (items: DocItem[], depth = 0) => (
+    <div className="space-y-0.5">
+      {items.map(item => {
+        const isActive = item.id === activeDocId;
+        const hasChildren = item.items && item.items.length > 0;
+        const status = syncStatuses[item.id]?.status;
+
+        if (item.type === 'category') {
+          return (
+            <div key={item.id}>
+              <button
+                onClick={() => toggle(item.id)}
+                className="w-full flex items-center justify-between px-3 py-2 text-xs font-bold text-zinc-500 uppercase tracking-wider hover:text-zinc-300 transition-colors"
+                style={{ paddingLeft: `${depth * 12 + 12}px` }}
+              >
+                <div className="flex items-center gap-2">
+                  {expanded.has(item.id) ? <FolderOpen className="w-3 h-3" /> : <Folder className="w-3 h-3" />}
+                  {item.label}
+                </div>
+                {hasChildren && (
+                  <ChevronDown className={`w-3 h-3 transition-transform ${expanded.has(item.id) ? 'rotate-0' : '-rotate-90'}`} />
+                )}
+              </button>
+              {expanded.has(item.id) && item.items && (
+                <div className="mt-1 mb-2 relative border-l border-zinc-800 ml-4">
+                  {renderItems(item.items, depth + 1)}
+                </div>
+              )}
+            </div>
+          );
+        }
+
+        return (
+          <button
+            key={item.id}
+            onClick={() => onSelect(item.id)}
+            className={`
+              w-full flex items-center justify-between px-3 py-1.5 text-sm rounded-md transition-all relative group
+              ${isActive 
+                ? 'bg-zinc-800 text-white font-medium' 
+                : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900'}
+            `}
+            style={{ paddingLeft: `${depth * 12 + 12}px` }}
+          >
+            <span>{item.label}</span>
+            
+            {/* Status indicators */}
+            {status === 'drift' && (
+              <span className="relative flex h-1.5 w-1.5">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-rose-500"></span>
+              </span>
+            )}
+            {status === 'synced' && isActive && (
+               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_5px_rgba(16,185,129,0.5)]" />
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+
+  return (
+    <div className="py-4">
+      {renderItems(section.items)}
+    </div>
+  );
+};```
+
+######## File: documentation/src/features/navigation/TableOfContents.tsx
+#####*Size: 4.0K, Lines: 89, Type: HTML document, ASCII text*
+
+```
+// File: src/features/navigation/TableOfContents.tsx
+import React, { useEffect, useState } from 'react';
+
+interface Heading {
+  id: string;
+  text: string;
+  level: number;
+}
+
+export const TableOfContents = ({ markdown }: { markdown: string }) => {
+  const [headings, setHeadings] = useState<Heading[]>([]);
+  const [activeId, setActiveId] = useState<string>('');
+
+  // 1. Parse Headings from Markdown
+  useEffect(() => {
+    const lines = markdown.split('\n');
+    const extracted: Heading[] = [];
+    
+    // Slugify helper
+    const slugify = (text: string) => 
+      text.toLowerCase().replace(/[^\w\s-]/g, '').replace(/\s+/g, '-');
+
+    lines.forEach(line => {
+      // Match # Heading, ## Heading, etc.
+      const match = line.match(/^(#{2,3})\s+(.+)$/);
+      if (match) {
+        extracted.push({
+          level: match[1].length,
+          text: match[2],
+          id: slugify(match[2]) // Note: Ensure ReactMarkdown is generating matching IDs
+        });
+      }
+    });
+
+    setHeadings(extracted);
+  }, [markdown]);
+
+  // 2. Scroll Spy
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            setActiveId(entry.target.id);
+          }
+        });
+      },
+      { rootMargin: '-10% 0% -80% 0%' }
+    );
+
+    headings.forEach(({ id }) => {
+      const element = document.getElementById(id);
+      if (element) observer.observe(element);
+    });
+
+    return () => observer.disconnect();
+  }, [headings]);
+
+  if (headings.length === 0) return null;
+
+  return (
+    <div className="hidden xl:block w-64 pl-8 border-l border-zinc-800 fixed right-8 top-24 h-[calc(100vh-6rem)] overflow-y-auto">
+      <h5 className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-4">
+        On this page
+      </h5>
+      <ul className="space-y-2">
+        {headings.map((heading) => (
+          <li key={heading.id} style={{ paddingLeft: `${(heading.level - 2) * 12}px` }}>
+            <a
+              href={`#${heading.id}`}
+              onClick={(e) => {
+                e.preventDefault();
+                document.getElementById(heading.id)?.scrollIntoView({ behavior: 'smooth' });
+                setActiveId(heading.id);
+              }}
+              className={`
+                block text-xs transition-colors truncate
+                ${activeId === heading.id 
+                  ? 'text-cyan-400 font-medium' 
+                  : 'text-zinc-500 hover:text-zinc-300'}
+              `}
+            >
+              {heading.text}
+            </a>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+};```
+
+####### Directory: documentation/src/features/sync
+
+######## File: documentation/src/features/sync/SourceStatus.tsx
+#####*Size: 4.0K, Lines: 60, Type: Java source, ASCII text*
+
+```
+import React from 'react';
+import { CheckCircle2, AlertTriangle, FileCode, GitBranch, ArrowRight } from 'lucide-react';
+
+export const SourceStatus = ({ status, path, repo }: { status: 'synced' | 'drift', path: string, repo: string }) => {
+  const isDrift = status === 'drift';
+  
+  return (
+    <div className={`
+      mb-10 rounded-lg border overflow-hidden
+      ${isDrift ? 'border-rose-500/30 bg-rose-500/5' : 'border-zinc-800 bg-zinc-900/30'}
+    `}>
+      <div className={`
+        px-4 py-3 border-b flex items-center justify-between
+        ${isDrift ? 'border-rose-500/20 bg-rose-500/10' : 'border-zinc-800 bg-zinc-900/50'}
+      `}>
+        <div className="flex items-center gap-2">
+          <FileCode className={`w-4 h-4 ${isDrift ? 'text-rose-400' : 'text-zinc-400'}`} />
+          <span className={`text-xs font-medium ${isDrift ? 'text-rose-200' : 'text-zinc-300'}`}>
+            Source Mapping
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          {isDrift ? (
+            <span className="flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-bold bg-rose-500/20 text-rose-400 border border-rose-500/20 uppercase tracking-wide">
+              <AlertTriangle className="w-3 h-3" /> Drift Detected
+            </span>
+          ) : (
+            <span className="flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 uppercase tracking-wide">
+              <CheckCircle2 className="w-3 h-3" /> Synced
+            </span>
+          )}
+        </div>
+      </div>
+
+      <div className="p-4">
+        <div className="flex items-center gap-3 text-xs font-mono mb-3">
+          <GitBranch className="w-3.5 h-3.5 text-zinc-600" />
+          <span className="text-zinc-500">{repo}</span>
+          <span className="text-zinc-700">/</span>
+          <span className="text-zinc-300">{path}</span>
+        </div>
+
+        {isDrift && (
+          <div className="mt-3 p-3 rounded bg-zinc-950 border border-zinc-800">
+            <p className="text-[11px] text-zinc-400 mb-2">
+              The documentation references symbols that are missing in the latest kernel build:
+            </p>
+            <div className="flex gap-2">
+              <code className="text-[10px] text-rose-300 bg-rose-950/30 px-1.5 py-0.5 rounded border border-rose-900/50">
+                RotationState::InGracePeriod
+              </code>
+              <code className="text-[10px] text-rose-300 bg-rose-950/30 px-1.5 py-0.5 rounded border border-rose-900/50">
+                IdentityHub::verify
+              </code>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};```
+
+###### Directory: documentation/src/layout
+
+####### File: documentation/src/layout/DocsLayout.tsx
+####*Size: 4.0K, Lines: 91, Type: Java source, Unicode text, UTF-8 text*
+
+```
+import React, { useState } from 'react';
+import { Menu, Search } from 'lucide-react';
+import { NavigationTab } from '../core/types';
+import { SIDEBAR_DATA } from '../core/constants';
+import { NetworkHeader } from '../shared/NetworkHeader';
+
+interface DocsLayoutProps {
+  children: React.ReactNode;
+  sidebar: React.ReactNode;
+  toc?: React.ReactNode;
+  activeTab: NavigationTab;
+  onTabChange: (tab: NavigationTab) => void;
+}
+
+export const DocsLayout = ({ children, sidebar, toc, activeTab, onTabChange }: DocsLayoutProps) => {
+  const [mobileOpen, setMobileOpen] = useState(false);
+
+  return (
+    <div className="min-h-screen bg-zinc-950 flex flex-col text-zinc-100 font-sans selection:bg-cyan-500/20">
+      
+      {/* 1. Global Network Bar */}
+      <NetworkHeader currentAppId="docs" />
+
+      <div className="flex flex-1 relative">
+        {/* Sidebar */}
+        <aside className={`
+          fixed inset-y-0 left-0 z-50 w-72 bg-zinc-950 border-r border-zinc-800 transform transition-transform duration-200 lg:translate-x-0
+          top-9 /* Pushed down by NetworkHeader */
+          ${mobileOpen ? 'translate-x-0' : '-translate-x-full'}
+        `}>
+          {/* Sidebar Header - Logo removed, just context title */}
+          <div className="h-14 flex items-center px-4 border-b border-zinc-800 justify-between">
+            <span className="font-bold text-white tracking-tight">Docs Portal</span>
+            <span className="text-[10px] bg-zinc-900 border border-zinc-800 px-1.5 py-0.5 rounded text-zinc-500">v2.4</span>
+          </div>
+
+          <div className="p-4 overflow-y-auto h-[calc(100vh-3.5rem-2.25rem)]">
+            {sidebar}
+          </div>
+        </aside>
+
+        {/* Main Content Wrapper */}
+        <div className="flex-1 lg:pl-72 flex flex-col min-h-[calc(100vh-2.25rem)]">
+          
+          {/* App Header (Tabs & Search) */}
+          <header className="h-14 sticky top-0 z-40 bg-zinc-950/80 backdrop-blur-sm border-b border-zinc-800 flex items-center justify-between px-6">
+            <div className="flex items-center gap-4">
+              <button onClick={() => setMobileOpen(true)} className="lg:hidden text-zinc-400">
+                <Menu className="w-5 h-5" />
+              </button>
+              
+              {/* Navigation Tabs (Kernel, Swarm, DDK, API) */}
+              <div className="hidden md:flex items-center gap-1">
+                {Object.entries(SIDEBAR_DATA).map(([key, section]) => (
+                  <button
+                    key={key}
+                    onClick={() => onTabChange(key as NavigationTab)}
+                    className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                      activeTab === key 
+                        ? 'bg-zinc-800 text-white' 
+                        : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900'
+                    }`}
+                  >
+                    {section.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <button className="flex items-center gap-2 px-3 py-1.5 bg-zinc-900 border border-zinc-800 rounded-md text-xs text-zinc-400 hover:text-zinc-200 hover:border-zinc-700 transition-colors">
+              <Search className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Search docs...</span>
+              <kbd className="ml-2 bg-zinc-800 px-1.5 py-0.5 rounded text-[10px]">⌘K</kbd>
+            </button>
+          </header>
+
+          <main className="flex-1 w-full flex">
+            <div className="flex-1 min-w-0 p-8 lg:p-12 xl:pr-8">
+              {children}
+            </div>
+            
+            {toc && (
+              <div className="hidden xl:block w-72 shrink-0">
+                {toc}
+              </div>
+            )}
+          </main>
+        </div>
+      </div>
+    </div>
+  );
+};```
+
+###### Directory: documentation/src/shared
+
+####### File: documentation/src/shared/DocsLayout.tsx
+####*Size: 4.0K, Lines: 79, Type: Java source, Unicode text, UTF-8 text*
+
+```
+import React, { useState } from 'react';
+import { BookOpen, Cpu, Layers, Terminal, ChevronRight, Search, Menu, Command } from 'lucide-react';
+
+const NavSection = ({ label, children }: { label: string, children: React.ReactNode }) => (
+  <div className="mb-6">
+    <h3 className="px-3 text-[11px] font-bold text-zinc-500 uppercase tracking-wider mb-2">{label}</h3>
+    <div className="space-y-0.5">{children}</div>
+  </div>
+);
+
+const NavItem = ({ active, label, onClick, status }: any) => (
+  <button
+    onClick={onClick}
+    className={`w-full flex items-center justify-between px-3 py-1.5 text-sm rounded-md transition-all ${
+      active 
+        ? 'bg-zinc-800 text-white font-medium' 
+        : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900'
+    }`}
+  >
+    <span>{label}</span>
+    {status === 'drift' && <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />}
+  </button>
+);
+
+export const DocsLayout = ({ children, sidebarContent }: any) => {
+  const [mobileOpen, setMobileOpen] = useState(false);
+
+  return (
+    <div className="min-h-screen bg-zinc-950 flex text-zinc-100 font-sans">
+      {/* Sidebar */}
+      <aside className={`
+        fixed inset-y-0 left-0 z-50 w-64 bg-zinc-950 border-r border-zinc-800 transform transition-transform duration-200 lg:translate-x-0
+        ${mobileOpen ? 'translate-x-0' : '-translate-x-full'}
+      `}>
+        <div className="h-14 flex items-center px-4 border-b border-zinc-800">
+          <span className="font-bold text-white tracking-tight flex items-center gap-2">
+            <div className="w-6 h-6 bg-gradient-to-br from-cyan-500 to-blue-600 rounded flex items-center justify-center">
+              <Terminal className="w-3 h-3 text-white" />
+            </div>
+            IOI Docs
+          </span>
+          <span className="ml-2 text-[10px] bg-zinc-900 border border-zinc-800 px-1.5 py-0.5 rounded text-zinc-500">v2.4</span>
+        </div>
+
+        <div className="p-4 overflow-y-auto h-[calc(100vh-3.5rem)]">
+          {sidebarContent}
+        </div>
+      </aside>
+
+      {/* Main Content */}
+      <div className="flex-1 lg:pl-64 flex flex-col min-h-screen">
+        {/* Header */}
+        <header className="h-14 sticky top-0 z-40 bg-zinc-950/80 backdrop-blur-sm border-b border-zinc-800 flex items-center justify-between px-6">
+          <div className="flex items-center gap-4">
+            <button onClick={() => setMobileOpen(true)} className="lg:hidden text-zinc-400">
+              <Menu className="w-5 h-5" />
+            </button>
+            <div className="hidden md:flex items-center text-xs text-zinc-500">
+              <span>IOI Network</span>
+              <ChevronRight className="w-3 h-3 mx-2" />
+              <span className="text-zinc-300">Kernel Core</span>
+              <ChevronRight className="w-3 h-3 mx-2" />
+              <span className="text-cyan-400">Architecture</span>
+            </div>
+          </div>
+
+          <button className="flex items-center gap-2 px-3 py-1.5 bg-zinc-900 border border-zinc-800 rounded-md text-xs text-zinc-400 hover:text-zinc-200 hover:border-zinc-700 transition-colors">
+            <Search className="w-3.5 h-3.5" />
+            <span>Search docs...</span>
+            <kbd className="ml-2 bg-zinc-800 px-1.5 py-0.5 rounded text-[10px]">⌘K</kbd>
+          </button>
+        </header>
+
+        <main className="flex-1 max-w-4xl mx-auto w-full p-8 lg:p-12">
+          {children}
+        </main>
+      </div>
+    </div>
+  );
+};```
+
+####### File: documentation/src/shared/NetworkHeader.tsx
+####*Size: 4.0K, Lines: 72, Type: HTML document, ASCII text, with very long lines (783)*
+
+```
+import React from 'react';
+import { ExternalLink, ChevronDown } from 'lucide-react';
+import { IOI_APPS, getAppUrl, NetworkAppId } from '../core/network-config';
+
+interface NetworkHeaderProps {
+  currentAppId: NetworkAppId;
+}
+
+export const NetworkHeader = ({ currentAppId }: NetworkHeaderProps) => {
+  return (
+    <nav className="h-9 bg-black border-b border-zinc-800 flex items-center justify-between px-4 z-[60] relative">
+      {/* Left: Network Logo & App Switcher */}
+      <div className="flex items-center gap-6">
+        {/* Master Brand */}
+        <a href={getAppUrl(IOI_APPS[0])} className="flex items-center gap-2 group">
+          <div className="w-4 h-4 bg-gradient-to-tr from-cyan-500 to-blue-600 rounded-sm" />
+          <span className="text-xs font-bold text-zinc-300 tracking-tight group-hover:text-white transition-colors">
+            IOI NETWORK
+          </span>
+        </a>
+
+        {/* Divider */}
+        <div className="h-3 w-px bg-zinc-800" />
+
+        {/* App Links (Desktop) */}
+        <div className="hidden md:flex items-center gap-1">
+          {IOI_APPS.map((app) => {
+            const isActive = app.id === currentAppId;
+            return (
+              <a
+                key={app.id}
+                href={getAppUrl(app)}
+                className={`
+                  flex items-center gap-2 px-3 py-1 rounded text-[11px] font-medium transition-all
+                  ${isActive 
+                    ? 'text-white bg-zinc-900 shadow-sm ring-1 ring-zinc-800' 
+                    : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900/50'}
+                `}
+              >
+                <span className={isActive ? 'text-cyan-400' : 'opacity-70'}>
+                  {app.icon}
+                </span>
+                {app.name}
+              </a>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Right: Global Utilities (Status, etc) */}
+      <div className="flex items-center gap-4">
+        {/* Mobile App Switcher Trigger would go here */}
+        
+        <div className="flex items-center gap-2 text-[10px] text-zinc-500 font-mono">
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+          <span>Mainnet: <span className="text-zinc-300">Operational</span></span>
+        </div>
+
+        <a 
+          href="https://github.com/ioi-network" 
+          target="_blank" 
+          rel="noreferrer"
+          className="text-zinc-500 hover:text-white transition-colors"
+        >
+          <span className="sr-only">GitHub</span>
+          <svg viewBox="0 0 24 24" className="w-4 h-4 fill-current" aria-hidden="true">
+            <path fillRule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z" clipRule="evenodd" />
+          </svg>
+        </a>
+      </div>
+    </nav>
+  );
+};```
+
+###### File: documentation/src/App.tsx
+###*Size: 12K, Lines: 245, Type: Java source, ASCII text*
+
+```
+// File: src/App.tsx
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import rehypeHighlight from 'rehype-highlight';
+import { Copy, Check, Terminal } from 'lucide-react';
+import { SIDEBAR_DATA } from './core/constants';
+import { checkContentIntegrity, flattenDocs, SyncResult } from './core/utils';
+import { DocsLayout } from './layout/DocsLayout';
+import { DocsSidebar } from './features/navigation/DocsSidebar';
+import { SourceStatus } from './features/content/SourceStatus';
+import { TableOfContents } from './features/navigation/TableOfContents';
+import { NavigationTab, DocItem } from './core/types';
+
+// Map repo keys to local directory paths if serving locally
+const LOCAL_REPO_MAP: Record<string, string> = {
+  kernel: 'sources',
+  swarm: 'sources', // Assuming swarm sdk is also under sources/ for this demo
+  ddk: 'sources'
+};
+
+const CodeBlock = ({ node, className, children, ...props }: any) => {
+  const [copied, setCopied] = useState(false);
+  const ref = useRef<HTMLPreElement>(null);
+
+  const onCopy = () => {
+    if (ref.current) {
+      navigator.clipboard.writeText(ref.current.innerText);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  return (
+    <div className="relative group my-6 rounded-lg overflow-hidden border border-zinc-800 bg-zinc-950/50">
+      <div className="absolute top-0 right-0 p-2 flex items-center gap-2">
+        <span className="text-[10px] text-zinc-600 font-mono uppercase">
+          {className?.replace('language-', '') || 'text'}
+        </span>
+        <button 
+          onClick={onCopy}
+          className="p-1.5 rounded-md text-zinc-500 hover:text-white hover:bg-zinc-800 transition-all opacity-0 group-hover:opacity-100"
+        >
+          {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+        </button>
+      </div>
+      <pre ref={ref} className={`${className} !my-0 !bg-transparent !p-4 overflow-x-auto`} {...props}>
+        {children}
+      </pre>
+    </div>
+  );
+};
+
+export default function App() {
+  const [activeTab, setActiveTab] = useState<NavigationTab>(NavigationTab.KERNEL);
+  const [activeDocId, setActiveDocId] = useState<string>('kernel/consensus/admft');
+  
+  // Content State
+  const [markdown, setMarkdown] = useState('');
+  const [sourceCode, setSourceCode] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [syncStatuses, setSyncStatuses] = useState<Record<string, SyncResult>>({});
+
+  const currentSection = SIDEBAR_DATA[activeTab];
+  const flatDocs = useMemo(() => flattenDocs(currentSection.items), [currentSection]);
+  
+  // Find active doc or fallback to first
+  const activeDoc = useMemo(() => 
+    flatDocs.find(d => d.id === activeDocId) || flatDocs[0], 
+  [flatDocs, activeDocId]);
+
+  // 1. Load Content (Real Fetch)
+  useEffect(() => {
+    const fetchContent = async () => {
+      if (!activeDoc) return;
+      setIsLoading(true);
+      setMarkdown(''); 
+      
+      try {
+        // Fetch Markdown
+        const docRes = await fetch(`/docs/${activeDoc.id}.md`);
+        let docText = '';
+        
+        if (docRes.ok) {
+          docText = await docRes.text();
+          setMarkdown(docText);
+        } else {
+          setMarkdown(`# ${activeDoc.label}\n\n*Documentation file not found: /docs/${activeDoc.id}.md*`);
+        }
+
+        // Fetch Source Code (if mapped)
+        let srcText = '';
+        if (activeDoc.source) {
+          // Try local sources folder first
+          const localPath = `/${LOCAL_REPO_MAP[activeDoc.source.repo]}/${activeDoc.source.path}`;
+          try {
+            const srcRes = await fetch(localPath);
+            if (srcRes.ok) {
+              srcText = await srcRes.text();
+              setSourceCode(srcText);
+            }
+          } catch (e) {
+            console.warn("Failed to fetch local source:", e);
+          }
+        } else {
+          setSourceCode('');
+        }
+
+        // Calculate Drift
+        if (docText && srcText) {
+          const status = checkContentIntegrity(docText, srcText);
+          setSyncStatuses(prev => ({ ...prev, [activeDoc.id]: status }));
+        } else if (activeDoc.source) {
+          // Source config exists but file failed to load
+          setSyncStatuses(prev => ({ 
+            ...prev, 
+            [activeDoc.id]: { status: 'unknown', missingSymbols: [] } 
+          }));
+        }
+
+      } catch (e) {
+        console.error("Content loading failed", e);
+        setMarkdown("# Error\nFailed to load documentation content.");
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchContent();
+  }, [activeDocId, activeDoc]);
+
+  // 2. Background Drift Check (for Sidebar badges)
+  useEffect(() => {
+    const checkAllDocs = async () => {
+      const updates: Record<string, SyncResult> = {};
+      
+      // Limit to current section to save bandwidth
+      const docsToCheck = flatDocs.filter(d => d.source && d.id !== activeDocId);
+      
+      for (const doc of docsToCheck) {
+        if (!doc.source) continue;
+        try {
+          const [mdRes, srcRes] = await Promise.all([
+            fetch(`/docs/${doc.id}.md`),
+            fetch(`/${LOCAL_REPO_MAP[doc.source.repo]}/${doc.source.path}`)
+          ]);
+          
+          if (mdRes.ok && srcRes.ok) {
+            const md = await mdRes.text();
+            const src = await srcRes.text();
+            updates[doc.id] = checkContentIntegrity(md, src);
+          }
+        } catch (e) { /* ignore background errors */ }
+      }
+      setSyncStatuses(prev => ({ ...prev, ...updates }));
+    };
+    
+    // Slight delay to prioritize main content
+    const timer = setTimeout(checkAllDocs, 1000);
+    return () => clearTimeout(timer);
+  }, [activeTab]); // Re-run when switching tabs
+
+  const handleTabChange = (tab: NavigationTab) => {
+    setActiveTab(tab);
+    const firstDoc = flattenDocs(SIDEBAR_DATA[tab].items)[0];
+    if (firstDoc) setActiveDocId(firstDoc.id);
+  };
+
+  return (
+    <DocsLayout
+      activeTab={activeTab}
+      onTabChange={handleTabChange}
+      sidebar={
+        <DocsSidebar 
+          section={currentSection} 
+          activeDocId={activeDocId} 
+          onSelect={setActiveDocId}
+          syncStatuses={syncStatuses}
+        />
+      }
+      toc={
+        <TableOfContents markdown={markdown} />
+      }
+    >
+      <div className="animate-in fade-in slide-in-from-bottom-2 duration-500">
+        {/* Breadcrumb */}
+        <div className="flex items-center gap-2 text-xs text-zinc-500 mb-8 font-mono">
+          <span className="hover:text-zinc-300 transition-colors cursor-pointer">IOI</span>
+          <span>/</span>
+          <span className="text-zinc-300">{currentSection.label}</span>
+          <span>/</span>
+          <span className="text-cyan-400 bg-cyan-950/30 px-1.5 py-0.5 rounded border border-cyan-900/50">
+            {activeDoc?.label}
+          </span>
+        </div>
+
+        {/* Source Integrity Monitor */}
+        {activeDoc?.source && (
+          <SourceStatus 
+            status={syncStatuses[activeDoc.id]?.status || 'verifying'}
+            missingSymbols={syncStatuses[activeDoc.id]?.missingSymbols}
+            repo={activeDoc.source.repo}
+            path={activeDoc.source.path}
+          />
+        )}
+
+        {isLoading ? (
+          <div className="space-y-6">
+            <div className="h-10 bg-zinc-900 rounded-lg w-1/2 animate-pulse" />
+            <div className="space-y-3">
+              <div className="h-4 bg-zinc-900/50 rounded w-full animate-pulse" />
+              <div className="h-4 bg-zinc-900/50 rounded w-5/6 animate-pulse" />
+              <div className="h-4 bg-zinc-900/50 rounded w-4/6 animate-pulse" />
+            </div>
+            <div className="h-48 bg-zinc-900/30 rounded-lg border border-zinc-800 animate-pulse" />
+          </div>
+        ) : (
+          <article className="prose prose-invert max-w-none 
+            prose-headings:font-medium prose-headings:tracking-tight prose-headings:text-zinc-100
+            prose-p:text-zinc-400 prose-p:leading-7
+            prose-a:text-cyan-400 prose-a:no-underline hover:prose-a:underline
+            prose-strong:text-zinc-200 prose-strong:font-semibold
+            prose-code:text-cyan-300 prose-code:font-normal prose-code:bg-cyan-950/30 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:before:content-none prose-code:after:content-none
+            prose-hr:border-zinc-800
+            prose-ul:my-6 prose-li:my-2
+            prose-th:text-left prose-th:text-zinc-300 prose-td:text-zinc-400 prose-tr:border-zinc-800
+            prose-blockquote:border-l-cyan-500 prose-blockquote:bg-zinc-900/30 prose-blockquote:py-1 prose-blockquote:px-4 prose-blockquote:not-italic prose-blockquote:text-zinc-400
+          ">
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
+              rehypePlugins={[rehypeHighlight]}
+              components={{
+                pre: CodeBlock,
+                h1: ({node, ...props}) => <h1 className="text-3xl mb-8" {...props} />,
+                h2: ({node, ...props}) => <h2 className="text-xl mt-10 mb-4 pb-2 border-b border-zinc-800" {...props} />,
+                h3: ({node, ...props}) => <h3 className="text-lg mt-8 mb-3 text-zinc-200" {...props} />,
+              }}
+            >
+              {markdown}
+            </ReactMarkdown>
+          </article>
+        )}
+      </div>
+    </DocsLayout>
+  );
+}```
+
+##### File: documentation/constants.tsx
+##*Size: 8.0K, Lines: 186, Type: Java source, ASCII text*
+
+```
+
+import React from 'react';
+import { 
+  Box, 
+  Cpu, 
+  Layers, 
+  Terminal, 
+  Shield, 
+  Activity, 
+  Share2, 
+  Code2, 
+  BookOpen,
+  FileJson,
+  Database,
+  Globe,
+  Fingerprint,
+  Zap
+} from 'lucide-react';
+import { SidebarSection, NavigationTab, SourceConfig } from './types';
+
+// Helper to construct source config
+const src = (repo: 'kernel' | 'swarm' | 'ddk', path: string): SourceConfig => ({ repo, path });
+
+export const SIDEBAR_DATA: Record<NavigationTab, SidebarSection> = {
+  [NavigationTab.SWARM]: {
+    id: 'frameworkSidebar',
+    label: 'Swarm SDK',
+    color: 'text-blue-400',
+    icon: <Code2 className="w-5 h-5" />,
+    items: [
+      { id: 'sdk/overview', label: 'Overview', type: 'doc', source: src('swarm', 'src/ioi_swarm/__init__.py'), description: 'Entry point for the IOI Swarm SDK.' },
+      { id: 'sdk/quickstart-python', label: 'Quickstart (Python)', type: 'doc', source: src('swarm', 'README.md'), description: 'Initial setup for Python agent builders.' },
+      {
+        id: 'core-primitives',
+        label: 'Core Primitives',
+        type: 'category',
+        items: [
+          { id: 'sdk/agents', label: 'Agents', type: 'doc', source: src('swarm', 'src/ioi_swarm/agent.py') },
+          { id: 'sdk/tools', label: 'Tools', type: 'doc', source: src('swarm', 'src/ioi_swarm/tools.py') },
+          { id: 'sdk/client', label: 'Client', type: 'doc', source: src('swarm', 'src/ioi_swarm/client.py') },
+          { id: 'sdk/types', label: 'Types', type: 'doc', source: src('swarm', 'src/ioi_swarm/types.py') },
+        ],
+      },
+      {
+        id: 'ghost-mode',
+        label: 'Ghost Mode',
+        type: 'category',
+        items: [
+          { id: 'sdk/ghost/trace-recording', label: 'Trace Recording', type: 'doc', source: src('swarm', 'src/ioi_swarm/ghost.py') },
+          { id: 'sdk/ghost/policy-synthesis', label: 'Policy Synthesis', type: 'doc', source: src('kernel', 'crates/cli/src/commands/policy.rs') },
+        ],
+      },
+    ],
+  },
+  [NavigationTab.KERNEL]: {
+    id: 'kernelSidebar',
+    label: 'Kernel & Node',
+    color: 'text-orange-400',
+    icon: <Cpu className="w-5 h-5" />,
+    items: [
+      { id: 'kernel/architecture', label: 'Architecture', type: 'doc', source: src('kernel', 'crates/node/src/lib.rs'), description: 'The Triadic Model runtime specification.' },
+      { id: 'kernel/installation', label: 'Installation', type: 'doc', source: src('kernel', 'Dockerfile'), description: 'Build instructions for node operators.' },
+      {
+        id: 'execution',
+        label: 'Execution Engine',
+        type: 'category',
+        items: [
+          { id: 'kernel/execution/parallel', label: 'Parallel (Block-STM)', type: 'doc', source: src('kernel', 'crates/execution/src/app/state_machine.rs') },
+          { id: 'kernel/execution/scheduler', label: 'Scheduler', type: 'doc', source: src('kernel', 'crates/execution/src/scheduler.rs') },
+        ]
+      },
+      {
+        id: 'firewall',
+        label: 'Agency Firewall',
+        type: 'category',
+        items: [
+          { id: 'kernel/firewall/rules', label: 'Action Rules', type: 'doc', source: src('kernel', 'crates/services/src/agentic/rules.rs') },
+          { id: 'kernel/firewall/scrubber', label: 'Scrubber', type: 'doc', source: src('kernel', 'crates/services/src/agentic/scrubber.rs') },
+        ],
+      },
+      {
+        id: 'scs',
+        label: 'Sovereign Context (SCS)',
+        type: 'category',
+        items: [
+          { id: 'kernel/storage/scs', label: 'Verifiable Store', type: 'doc', source: src('kernel', 'crates/scs/src/types.rs') },
+          { id: 'kernel/scs/indexing', label: 'Vector Indexing (mHNSW)', type: 'doc', source: src('kernel', 'crates/scs/src/index.rs') },
+        ],
+      },
+      {
+        id: 'consensus',
+        label: 'Consensus (A-DMFT)',
+        type: 'category',
+        items: [
+          { id: 'kernel/consensus/admft', label: 'Guardian Specs', type: 'doc', source: src('kernel', 'crates/consensus/src/admft.rs') },
+          { id: 'kernel/consensus/slashing', label: 'Slashing', type: 'doc', source: src('kernel', 'crates/consensus/src/common/penalty.rs') },
+        ],
+      },
+      {
+        id: 'identity',
+        label: 'Identity & Security',
+        type: 'category',
+        items: [
+          { id: 'kernel/identity/pqc', label: 'PQC Migration', type: 'doc', source: src('kernel', 'crates/services/src/identity/mod.rs') },
+        ]
+      }
+    ],
+  },
+  [NavigationTab.DDK]: {
+    id: 'ddkSidebar',
+    label: 'Driver Kit',
+    color: 'text-emerald-400',
+    icon: <Layers className="w-5 h-5" />,
+    items: [
+      { id: 'ddk/overview', label: 'Overview', type: 'doc', source: src('ddk', 'src/lib.rs') },
+      {
+        id: 'drivers',
+        label: 'Standard Drivers',
+        type: 'category',
+        items: [
+          { id: 'ddk/drivers/browser', label: 'Browser', type: 'doc', source: src('ddk', 'src/browser.rs') },
+          { id: 'ddk/drivers/gui', label: 'GUI Engine', type: 'doc', source: src('ddk', 'src/gui/mod.rs') },
+          { id: 'ddk/drivers/os', label: 'OS Bridge', type: 'doc', source: src('ddk', 'src/os.rs') },
+        ],
+      },
+      {
+        id: 'ibc',
+        label: 'IBC & Interop',
+        type: 'category',
+        items: [
+          { id: 'ddk/ibc/light-clients', label: 'Light Clients', type: 'doc', source: src('kernel', 'crates/services/ibc/light_clients/') },
+          { id: 'ddk/ibc/zk-relay', label: 'ZK Relay', type: 'doc', source: src('kernel', 'crates/api/src/ibc/zk.rs') },
+        ],
+      },
+    ],
+  },
+  [NavigationTab.API]: {
+    id: 'apiSidebar',
+    label: 'API Reference',
+    color: 'text-purple-400',
+    icon: <Terminal className="w-5 h-5" />,
+    items: [
+      { id: 'api/blockchain-proto', label: 'Blockchain Proto', type: 'doc', source: src('kernel', 'crates/ipc/proto/blockchain.proto') },
+      { id: 'api/control-proto', label: 'Control Proto', type: 'doc', source: src('kernel', 'crates/ipc/proto/control.proto') },
+      { id: 'api/public-proto', label: 'Public Proto', type: 'doc', source: src('kernel', 'crates/ipc/proto/public.proto') },
+    ],
+  },
+};
+
+export const MAPPING_CARDS = [
+  {
+    title: "Parallel Engine",
+    concept: "Block-STM",
+    path: "crates/execution/src/app/",
+    icon: <Zap className="text-yellow-400" />,
+    color: "yellow"
+  },
+  {
+    title: "Agency Firewall",
+    concept: "Policy Engine",
+    path: "crates/services/src/agentic/",
+    icon: <Shield className="text-red-400" />,
+    color: "red"
+  },
+  {
+    title: "Sovereign Context",
+    concept: "Verifiable SCS",
+    path: "crates/scs/src/store.rs",
+    icon: <Database className="text-emerald-400" />,
+    color: "emerald"
+  },
+  {
+    title: "Guardian Consensus",
+    concept: "A-DMFT",
+    path: "crates/consensus/src/admft.rs",
+    icon: <Globe className="text-indigo-400" />,
+    color: "indigo"
+  },
+  {
+    title: "Identity Hub",
+    concept: "PQC / Rotation",
+    path: "crates/services/src/identity/",
+    icon: <Fingerprint className="text-pink-400" />,
+    color: "pink"
+  }
+];
+```
+
+##### File: documentation/index.html
+##*Size: 4.0K, Lines: 64, Type: HTML document, ASCII text*
+
+```html
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IOI Network Docs Explorer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #030712;
+            color: #f9fafb;
+        }
+        .mono {
+            font-family: 'JetBrains Mono', monospace;
+        }
+        .glass {
+            background: rgba(17, 24, 39, 0.7);
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(75, 85, 99, 0.3);
+        }
+        /* Markdown Customization */
+        .prose pre {
+            background-color: #0d1117 !important;
+            border: 1px solid #30363d;
+        }
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #111827;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #374151;
+            border-radius: 10px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #4b5563;
+        }
+    </style>
+<script type="importmap">
+{
+  "imports": {
+    "react/": "https://esm.sh/react@^19.2.3/",
+    "react": "https://esm.sh/react@^19.2.3",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
+    "lucide-react": "https://esm.sh/lucide-react@^0.562.0",
+    "react-markdown": "https://esm.sh/react-markdown@9.0.1?bundle",
+    "rehype-highlight": "https://esm.sh/rehype-highlight@7.0.0?bundle",
+    "remark-gfm": "https://esm.sh/remark-gfm@4.0.0?bundle",
+    "rehype-raw": "https://esm.sh/rehype-raw@7.0.0?bundle"
+  }
+}
+</script>
+<link rel="stylesheet" href="/index.css">
+</head>
+<body>
+    <div id="root"></div>
+<script type="module" src="/index.tsx"></script>
+</body>
+</html>
+```
+
+##### File: documentation/index.tsx
+##*Size: 4.0K, Lines: 16, Type: Java source, ASCII text*
+
+```
+
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+import App from './src/App';
+
+const rootElement = document.getElementById('root');
+if (!rootElement) {
+  throw new Error("Could not find root element to mount to");
+}
+
+const root = ReactDOM.createRoot(rootElement);
+root.render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>
+);
+```
+
+##### File: documentation/metadata.json
+##*Size: 4.0K, Lines: 4, Type: JSON data*
 
 ##*File content not included (exceeds threshold or non-text file)*
 
-##### File: assets/logo-final.svg
-##*Size: 8.0K, Lines: 123, Type: SVG Scalable Vector Graphics image*
+##### File: documentation/package.json
+##*Size: 4.0K, Lines: 28, Type: JSON data*
 
 ##*File content not included (exceeds threshold or non-text file)*
 
-#### Directory: context
+##### File: documentation/package-lock.json
+##*Size: 128K, Lines: 3572, Type: JSON data*
 
-##### File: context/NetworkContext.tsx
-##*Size: 8.0K, Lines: 258, Type: Java source, ASCII text*
+##*File content not included (exceeds threshold or non-text file)*
+
+##### File: documentation/README.md
+##*Size: 4.0K, Lines: 20, Type: ASCII text*
+
+```markdown
+<div align="center">
+<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
+</div>
+
+# Run and deploy your AI Studio app
+
+This contains everything you need to run your app locally.
+
+View your app in AI Studio: https://ai.studio/apps/drive/1HW3xGCi4JQmFRm9fFhMClDuuSNvKddzY
+
+## Run Locally
+
+**Prerequisites:**  Node.js
+
+
+1. Install dependencies:
+   `npm install`
+2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
+3. Run the app:
+   `npm run dev`
+```
+
+##### File: documentation/tsconfig.json
+##*Size: 4.0K, Lines: 28, Type: JSON data*
+
+##*File content not included (exceeds threshold or non-text file)*
+
+##### File: documentation/types.ts
+##*Size: 4.0K, Lines: 33, Type: Java source, ASCII text*
+
+```typescript
+
+// Import React to ensure the React namespace is available for type definitions
+import React from 'react';
+
+export interface SourceConfig {
+  repo: 'kernel' | 'swarm' | 'ddk';
+  path: string;
+  branch?: string;
+}
+
+export interface DocItem {
+  id: string;
+  label: string;
+  source?: SourceConfig;
+  type: 'doc' | 'category';
+  items?: DocItem[];
+  description?: string;
+}
+
+export interface SidebarSection {
+  id: string;
+  label: string;
+  items: DocItem[];
+  icon: React.ReactNode;
+  color: string;
+}
+
+export enum NavigationTab {
+  SWARM = 'frameworkSidebar',
+  KERNEL = 'kernelSidebar',
+  DDK = 'ddkSidebar',
+  API = 'apiSidebar'
+}
+```
+
+##### File: documentation/vite.config.ts
+##*Size: 4.0K, Lines: 23, Type: Java source, ASCII text*
+
+```typescript
+import path from 'path';
+import { defineConfig, loadEnv } from 'vite';
+import react from '@vitejs/plugin-react';
+
+export default defineConfig(({ mode }) => {
+    const env = loadEnv(mode, '.', '');
+    return {
+      server: {
+        port: 3000,
+        host: '0.0.0.0',
+      },
+      plugins: [react()],
+      define: {
+        'process.env.API_KEY': JSON.stringify(env.GEMINI_API_KEY),
+        'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY)
+      },
+      resolve: {
+        alias: {
+          '@': path.resolve(__dirname, '.'),
+        }
+      }
+    };
+});
+```
+
+#### Directory: governance
+
+##### Directory: governance/assets
+
+###### File: governance/assets/ioi-logo-dark.svg
+###*Size: 8.0K, Lines: 73, Type: SVG Scalable Vector Graphics image*
+
+###*File content not included (exceeds threshold or non-text file)*
+
+###### File: governance/assets/logo-final.svg
+###*Size: 8.0K, Lines: 123, Type: SVG Scalable Vector Graphics image*
+
+###*File content not included (exceeds threshold or non-text file)*
+
+##### Directory: governance/context
+
+###### File: governance/context/NetworkContext.tsx
+###*Size: 8.0K, Lines: 258, Type: Java source, ASCII text*
 
 ```
 import React, { createContext, useContext, useState, ReactNode, useCallback } from 'react';
@@ -288,8 +2314,8 @@ export const useNetwork = () => {
   return context;
 };```
 
-##### File: context/ToastContext.tsx
-##*Size: 4.0K, Lines: 83, Type: Java source, ASCII text*
+###### File: governance/context/ToastContext.tsx
+###*Size: 4.0K, Lines: 83, Type: Java source, ASCII text*
 
 ```
 import React, { createContext, useContext, useState, ReactNode, useCallback } from 'react';
@@ -377,10 +2403,10 @@ export const useToast = () => {
   return context;
 };```
 
-#### Directory: core
+##### Directory: governance/core
 
-##### File: core/constants.ts
-##*Size: 4.0K, Lines: 108, Type: Java source, ASCII text*
+###### File: governance/core/constants.ts
+###*Size: 4.0K, Lines: 108, Type: Java source, ASCII text*
 
 ```typescript
 import { Agent, EpochInfo, Proposal, ProposalType, SlashingEvent } from './types';
@@ -493,8 +2519,89 @@ export const MOCK_SLASHING_EVENTS: SlashingEvent[] = [
   }
 ];```
 
-##### File: core/types.ts
-##*Size: 4.0K, Lines: 76, Type: ASCII text*
+###### File: governance/core/network-config.tsx
+###*Size: 4.0K, Lines: 75, Type: Java source, ASCII text*
+
+```
+import React from 'react';
+import { LayoutGrid, Scale, BookOpen, Terminal, ShieldCheck, Globe } from 'lucide-react';
+
+export type NetworkAppId = 'hub' | 'governance' | 'docs' | 'explorer' | 'studio' | 'www';
+
+export interface NetworkApp {
+  id: NetworkAppId;
+  name: string;
+  url: string;
+  devUrl: string;
+  icon: React.ElementType;
+  description: string;
+  status: 'live' | 'beta' | 'maintenance';
+}
+
+export const IOI_APPS: NetworkApp[] = [
+  {
+    id: 'www',
+    name: 'Gateway',
+    url: 'https://ioi.network',
+    devUrl: 'http://localhost:3005',
+    icon: Globe,
+    description: 'Network Entry Point',
+    status: 'live'
+  },
+  {
+    id: 'hub',
+    name: 'IOI Hub',
+    url: 'https://app.ioi.network',
+    devUrl: 'http://localhost:3000',
+    icon: LayoutGrid,
+    description: 'Dashboard & Wallet',
+    status: 'beta'
+  },
+  {
+    id: 'governance',
+    name: 'Governance',
+    url: 'https://gov.ioi.network',
+    devUrl: 'http://localhost:3001',
+    icon: Scale,
+    description: 'DAO & Proposals',
+    status: 'live'
+  },
+  {
+    id: 'docs',
+    name: 'Documentation',
+    url: 'https://docs.ioi.network',
+    devUrl: 'http://localhost:3002',
+    icon: BookOpen,
+    description: 'Kernel & SDK Refs',
+    status: 'live'
+  },
+  {
+    id: 'explorer',
+    name: 'Block Explorer',
+    url: 'https://scan.ioi.network',
+    devUrl: 'http://localhost:3003',
+    icon: Terminal,
+    description: 'Transaction Ledger',
+    status: 'live'
+  },
+  {
+    id: 'studio',
+    name: 'Agent Studio',
+    url: 'https://studio.ioi.network',
+    devUrl: 'http://localhost:3004',
+    icon: ShieldCheck,
+    description: 'Underwriting & Deploy',
+    status: 'maintenance'
+  }
+];
+
+export const getAppUrl = (app: NetworkApp) => {
+  const isDev = window.location.hostname === 'localhost';
+  return isDev ? app.devUrl : app.url;
+};```
+
+###### File: governance/core/types.ts
+###*Size: 4.0K, Lines: 76, Type: ASCII text*
 
 ```typescript
 export enum ProposalType {
@@ -575,12 +2682,12 @@ export interface BlockHeader {
   timestamp: string;
 }```
 
-#### Directory: features
+##### Directory: governance/features
 
-##### Directory: features/dashboard
+###### Directory: governance/features/dashboard
 
-###### File: features/dashboard/Dashboard.tsx
-###*Size: 12K, Lines: 315, Type: Java source, ASCII text*
+####### File: governance/features/dashboard/Dashboard.tsx
+####*Size: 12K, Lines: 315, Type: Java source, ASCII text*
 
 ```
 import React, { useState, useEffect } from 'react';
@@ -900,10 +3007,10 @@ export default function Dashboard() {
   );
 }```
 
-##### Directory: features/governance
+###### Directory: governance/features/governance
 
-###### File: features/governance/Governance.tsx
-###*Size: 12K, Lines: 318, Type: Java source, Unicode text, UTF-8 text*
+####### File: governance/features/governance/Governance.tsx
+####*Size: 12K, Lines: 318, Type: Java source, Unicode text, UTF-8 text*
 
 ```
 import React, { useState, useEffect } from 'react';
@@ -1226,102 +3333,149 @@ export default function Governance() {
   );
 }```
 
-##### Directory: features/judiciary
+###### Directory: governance/features/judiciary
 
-###### File: features/judiciary/DialecticView.tsx
-###*Size: 4.0K, Lines: 86, Type: Java source, ASCII text*
+####### File: governance/features/judiciary/DialecticView.tsx
+####*Size: 8.0K, Lines: 133, Type: Java source, Unicode text, UTF-8 text*
 
 ```
-import React from 'react';
+import React, { useState } from 'react';
+import { ChevronDown, ChevronUp, FileText, Scale } from 'lucide-react';
 
 interface Argument {
-  role: 'Prosecutor' | 'Defender';
+  step: number;
+  role: 'Prosecutor' | 'Defender' | 'Judge';
   claim: string;
-  citations: string[];
-  confidence: number;
+  citations: { id: string; type: 'receipt' | 'policy' | 'oracle' }[];
+  confidence: number; // 0.0 to 1.0
+  technical_context?: string;
 }
 
+// Data mirroring Whitepaper §10.1.1
+const MOCK_DEBATE: Argument[] = [
+  {
+    step: 1,
+    role: 'Prosecutor',
+    claim: "Agent violated Hard Constraint: receipt.latency (850ms) > ICS.deadline (500ms).",
+    citations: [
+      { id: "rcpt_0x8a...99", type: "receipt" },
+      { id: "ics_template_v1", type: "policy" }
+    ],
+    confidence: 0.99,
+    technical_context: "Integer math verification of timestamp delta."
+  },
+  {
+    step: 2,
+    role: 'Defender',
+    claim: "Latency spike attributed to Network Oracle divergence. Provider executed within bounds relative to local clock.",
+    citations: [
+      { id: "oracle_chk_0x4...a2", type: "oracle" }
+    ],
+    confidence: 0.65,
+    technical_context: "Requesting 'Force Majeure' exception per Protocol Rule 12.B."
+  },
+  {
+    step: 3,
+    role: 'Judge',
+    claim: "Oracle divergence claim rejected. Local clock drift exceeds protocol tolerance (200ms). Slash verified.",
+    citations: [],
+    confidence: 0.94,
+    technical_context: "Finalizing VerdictHash: 0x9f...22"
+  }
+];
+
 export const DialecticView = () => {
-  const debateFlow: Argument[] = [
-    {
-      role: 'Prosecutor',
-      claim: "Agent failed 'Hard Constraint Check' on latency. Receipt timestamp > Max_Deadline.",
-      citations: ["rcpt_0x8a...99", "policy_hash_0x1..."],
-      confidence: 0.98
-    },
-    {
-      role: 'Defender',
-      claim: "Provider Node clock drift detected. Cross-referenced with Oracle Time Anchor.",
-      citations: ["oracle_chk_0x4..."],
-      confidence: 0.65
-    }
-  ];
+  const [expandedStep, setExpandedStep] = useState<number | null>(3);
 
   return (
     <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 overflow-hidden">
       {/* Header */}
-      <div className="px-4 py-3 border-b border-zinc-800 flex items-center justify-between">
-        <h3 className="text-sm font-medium text-white">Dialectic Verification</h3>
-        <span className="text-[10px] text-violet-400 bg-violet-500/10 px-2 py-0.5 rounded">
-          Tier 4
+      <div className="px-4 py-3 border-b border-zinc-800 flex items-center justify-between bg-zinc-950/30">
+        <div className="flex items-center gap-2">
+          <Scale className="w-4 h-4 text-zinc-400" />
+          <h3 className="text-sm font-medium text-white">Dialectic Verification Protocol (DVP)</h3>
+        </div>
+        <span className="text-[10px] text-violet-400 bg-violet-500/10 px-2 py-0.5 rounded border border-violet-500/20">
+          Tier 4 (Arbitration)
         </span>
       </div>
 
-      {/* Debate flow */}
-      <div className="p-4 space-y-3">
-        {debateFlow.map((arg, idx) => (
+      {/* Debate Flow */}
+      <div className="p-4 space-y-4">
+        {MOCK_DEBATE.map((arg) => (
           <div 
-            key={idx} 
-            className={`p-3 rounded-lg border ${
-              arg.role === 'Prosecutor' 
-                ? 'bg-rose-500/5 border-rose-500/10' 
-                : 'bg-emerald-500/5 border-emerald-500/10'
+            key={arg.step}
+            className={`border rounded-lg transition-all duration-300 ${
+              arg.role === 'Judge' 
+                ? 'bg-zinc-900 border-zinc-700 shadow-lg' 
+                : 'bg-zinc-950/50 border-zinc-800'
             }`}
           >
-            <div className="flex items-center justify-between mb-2">
-              <span className={`text-[10px] font-medium uppercase tracking-wide ${
-                arg.role === 'Prosecutor' ? 'text-rose-400' : 'text-emerald-400'
-              }`}>
-                {arg.role}
-              </span>
-              <span className="text-[10px] font-mono text-zinc-500">
-                {(arg.confidence * 100).toFixed(0)}%
-              </span>
-            </div>
-            <p className="text-xs text-zinc-300 leading-relaxed">{arg.claim}</p>
-            <div className="flex gap-1.5 mt-2">
-              {arg.citations.map(cite => (
-                <span 
-                  key={cite} 
-                  className="text-[9px] font-mono text-zinc-500 bg-zinc-950 px-1.5 py-0.5 rounded"
-                >
-                  {cite}
+            <button
+              onClick={() => setExpandedStep(expandedStep === arg.step ? null : arg.step)}
+              className="w-full flex items-center justify-between p-3"
+            >
+              <div className="flex items-center gap-3">
+                <div className={`w-1.5 h-1.5 rounded-full ${
+                  arg.role === 'Prosecutor' ? 'bg-rose-500' :
+                  arg.role === 'Defender' ? 'bg-emerald-500' : 'bg-cyan-500'
+                }`} />
+                <span className={`text-xs font-medium uppercase tracking-wider ${
+                  arg.role === 'Prosecutor' ? 'text-rose-400' :
+                  arg.role === 'Defender' ? 'text-emerald-400' : 'text-cyan-400'
+                }`}>
+                  {arg.role}
                 </span>
-              ))}
-            </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="text-[10px] font-mono text-zinc-500">
+                  Confidence: {(arg.confidence * 100).toFixed(0)}%
+                </span>
+                {expandedStep === arg.step ? 
+                  <ChevronUp className="w-3 h-3 text-zinc-600" /> : 
+                  <ChevronDown className="w-3 h-3 text-zinc-600" />
+                }
+              </div>
+            </button>
+
+            {/* Expanded Content */}
+            {expandedStep === arg.step && (
+              <div className="px-4 pb-4 animate-in slide-in-from-top-2 duration-200">
+                <p className="text-sm text-zinc-300 leading-relaxed border-l-2 border-zinc-800 pl-3">
+                  {arg.claim}
+                </p>
+                
+                {arg.technical_context && (
+                  <p className="mt-2 text-[11px] text-zinc-500 font-mono">
+                    // {arg.technical_context}
+                  </p>
+                )}
+
+                {arg.citations.length > 0 && (
+                  <div className="mt-3 flex gap-2">
+                    {arg.citations.map((cite) => (
+                      <span 
+                        key={cite.id} 
+                        className="flex items-center gap-1.5 text-[10px] font-mono text-zinc-400 bg-zinc-900 border border-zinc-800 px-2 py-1 rounded cursor-help hover:text-white transition-colors"
+                        title={cite.type}
+                      >
+                        <FileText className="w-2.5 h-2.5" />
+                        {cite.id}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         ))}
-      </div>
-
-      {/* Verdict */}
-      <div className="p-4 border-t border-zinc-800 bg-zinc-950/50">
-        <div className="flex items-center justify-between">
-          <div>
-            <div className="text-[10px] text-zinc-500 uppercase mb-0.5">Verdict</div>
-            <div className="text-sm font-medium text-white">Slash Provider Bond</div>
-          </div>
-          <div className="text-right">
-            <div className="text-[10px] text-zinc-500 uppercase mb-0.5">Confidence</div>
-            <div className="text-lg font-mono text-cyan-400">0.92</div>
-          </div>
-        </div>
       </div>
     </div>
   );
 };```
 
-###### File: features/judiciary/Judiciary.tsx
-###*Size: 12K, Lines: 229, Type: HTML document, ASCII text*
+####### File: governance/features/judiciary/Judiciary.tsx
+####*Size: 12K, Lines: 229, Type: HTML document, ASCII text*
 
 ```
 import React, { useState, useEffect } from 'react';
@@ -1555,76 +3709,106 @@ export default function Judiciary() {
   );
 }```
 
-##### Directory: features/underwriting
+###### Directory: governance/features/underwriting
 
-###### File: features/underwriting/AgentHierarchy.tsx
-###*Size: 4.0K, Lines: 60, Type: Java source, ASCII text*
+####### File: governance/features/underwriting/AgentHierarchy.tsx
+####*Size: 4.0K, Lines: 90, Type: Java source, ASCII text*
 
 ```
 import React from 'react';
+import { Agent } from '../../core/types';
 
-interface NodeProps {
-  role: string;
-  name: string;
-  bond: string;
-  isRoot?: boolean;
+interface AgentSwarmViewProps {
+  rootAgent: Agent;
 }
 
-const HierarchyNode = ({ role, name, bond, isRoot }: NodeProps) => (
-  <div className={`relative p-3 rounded-lg border ${
+const HierarchyNode = ({ role, name, bond, isRoot, status }: { 
+  role: string; name: string; bond: string; isRoot?: boolean; status?: string 
+}) => (
+  <div className={`relative p-3 rounded-lg border transition-all ${
     isRoot 
-      ? 'bg-cyan-500/5 border-cyan-500/20' 
+      ? 'bg-cyan-950/30 border-cyan-500/30 shadow-[0_0_15px_rgba(6,182,212,0.1)]' 
       : 'bg-zinc-900 border-zinc-800'
-  } w-44 text-center`}>
-    <div className="text-[10px] uppercase tracking-wide text-zinc-500 mb-1">{role}</div>
-    <div className="text-sm text-white truncate">{name}</div>
-    <div className="mt-2 text-xs font-mono text-zinc-400 bg-zinc-950 rounded px-2 py-1">
-      Bond: ${bond}
+  } w-48 text-center`}>
+    
+    <div className="flex justify-between items-center mb-2">
+      <span className="text-[9px] uppercase tracking-wide text-zinc-500">{role}</span>
+      {status === 'Slashed' && (
+        <span className="text-[9px] bg-rose-500/20 text-rose-400 px-1.5 py-0.5 rounded">SLASHED</span>
+      )}
+    </div>
+    
+    <div className="text-sm font-medium text-white truncate">{name}</div>
+    
+    <div className="mt-3 flex items-center justify-between text-[10px] font-mono text-zinc-400 bg-zinc-950/50 rounded px-2 py-1.5 border border-zinc-800/50">
+      <span>Bond</span>
+      <span className={isRoot ? 'text-cyan-400' : 'text-zinc-300'}>${bond}</span>
     </div>
   </div>
 );
 
-export const AgentSwarmView = () => {
+export const AgentSwarmView = ({ rootAgent }: AgentSwarmViewProps) => {
+  // In a real app, this data would come from the Delegation Graph Ledger
+  // For now, we simulate workers based on the root agent's risk profile
+  const workers = [
+    { role: 'Data Fetcher', name: 'Oracle Connect v1', bond: '2,500' },
+    { role: 'Reasoning', name: 'Llama-3-70b-Instruct', bond: '10,000' },
+    { role: 'Execution', name: 'SafeWallet Signer', bond: '15,000' }
+  ];
+
   return (
-    <div className="p-4 rounded-lg border border-zinc-800 bg-zinc-900/30">
-      <div className="flex items-center gap-2 mb-5">
-        <div className="w-1 h-1 rounded-full bg-cyan-400" />
-        <h3 className="text-sm font-medium text-white">Liability Tree</h3>
-      </div>
-      
-      <div className="flex flex-col items-center space-y-4">
-        {/* Root */}
+    <div className="p-6 rounded-lg border border-zinc-800 bg-zinc-950/50 relative overflow-hidden">
+      {/* Background Grid */}
+      <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.02)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.02)_1px,transparent_1px)] bg-[size:20px_20px] pointer-events-none" />
+
+      <div className="relative z-10 flex flex-col items-center space-y-6">
+        {/* Root (The Planner) */}
         <HierarchyNode 
-          role="Manager" 
-          name="Portfolio Manager Alpha" 
-          bond="50,000" 
-          isRoot 
+          role="Planner Node (Manager)" 
+          name={rootAgent.name} 
+          bond={(rootAgent.totalStaked / 100).toLocaleString()} 
+          isRoot
+          status={rootAgent.status}
         />
         
-        {/* Connector */}
-        <div className="w-px h-4 bg-zinc-700" />
+        {/* Connection Lines */}
+        <div className="relative h-6 w-full max-w-[280px]">
+          {/* Vertical Stem */}
+          <div className="absolute left-1/2 -translate-x-1/2 top-0 h-full w-px bg-zinc-700" />
+          {/* Horizontal Bar */}
+          <div className="absolute bottom-0 left-0 right-0 h-px bg-zinc-700" />
+          {/* Vertical Connectors to children */}
+          <div className="absolute bottom-0 left-0 h-2 w-px bg-zinc-700 translate-y-full" />
+          <div className="absolute bottom-0 left-1/2 -translate-x-1/2 h-2 w-px bg-zinc-700 translate-y-full" />
+          <div className="absolute bottom-0 right-0 h-2 w-px bg-zinc-700 translate-y-full" />
+        </div>
         
-        {/* Children */}
-        <div className="flex gap-6 relative">
-          {/* Horizontal connector */}
-          <div className="absolute -top-4 left-1/4 right-1/4 h-px bg-zinc-700" />
-          <div className="absolute -top-4 left-1/4 w-px h-4 bg-zinc-700" />
-          <div className="absolute -top-4 right-1/4 w-px h-4 bg-zinc-700" />
-          
-          <HierarchyNode role="Research" name="Sentiment Analyzer" bond="5,000" />
-          <HierarchyNode role="Execution" name="Uniswap Executor" bond="12,000" />
+        {/* Workers */}
+        <div className="flex gap-4 pt-2">
+          {workers.map((worker, idx) => (
+            <HierarchyNode 
+              key={idx}
+              role={`Worker ${idx + 1}`} 
+              name={worker.name} 
+              bond={worker.bond} 
+            />
+          ))}
         </div>
       </div>
       
-      <p className="text-[11px] text-zinc-600 text-center mt-5">
-        If worker faults, manager bond is slashed first
-      </p>
+      <div className="mt-8 flex items-start gap-2 bg-blue-500/5 border border-blue-500/10 p-3 rounded text-[11px] text-blue-200">
+        <div className="w-4 h-4 shrink-0 rounded-full bg-blue-500/20 flex items-center justify-center text-blue-400 font-bold">i</div>
+        <p>
+          Recursive Liability Active: If any Worker commits a fault (e.g., Equivocation), 
+          <span className="font-bold text-white"> {rootAgent.name}</span>'s bond is slashed first to compensate the user.
+        </p>
+      </div>
     </div>
   );
 };```
 
-###### File: features/underwriting/Underwriting.tsx
-###*Size: 16K, Lines: 429, Type: Java source, ASCII text*
+####### File: governance/features/underwriting/Underwriting.tsx
+####*Size: 16K, Lines: 430, Type: Java source, ASCII text*
 
 ```
 import React, { useState, useEffect } from 'react';
@@ -1935,7 +4119,8 @@ const AgentRow = ({
         <tr className="bg-zinc-950">
           <td colSpan={6} className="px-4 py-4">
             <FadeIn>
-              <AgentSwarmView />
+              {/* FIXED: Passing displayAgent as rootAgent to the child component */}
+              <AgentSwarmView rootAgent={displayAgent} />
             </FadeIn>
           </td>
         </tr>
@@ -2058,153 +4243,22 @@ export default function Underwriting() {
   );
 }```
 
-#### Directory: node_modules (skipped)
+##### Directory: governance/node_modules (skipped)
 
-#### Directory: shared
+##### Directory: governance/shared
 
-##### Directory: shared/layout
+###### Directory: governance/shared/layout
 
-###### File: shared/layout/CommandPalette.tsx
-###*Size: 8.0K, Lines: 125, Type: Java source, Unicode text, UTF-8 text*
-
-```
-import React, { useEffect, useState, useRef } from 'react';
-import { Search, LayoutDashboard, Vote, ShieldCheck, Scale } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
-
-interface CommandPaletteProps {
-  isOpen: boolean;
-  setIsOpen: (open: boolean) => void;
-}
-
-export const CommandPalette = ({ isOpen, setIsOpen }: CommandPaletteProps) => {
-  const navigate = useNavigate();
-  const inputRef = useRef<HTMLInputElement>(null);
-  const [query, setQuery] = useState('');
-  const [selectedIndex, setSelectedIndex] = useState(0);
-
-  const actions = [
-    { id: 'nav-dash', label: 'Dashboard', hint: 'Network overview', icon: LayoutDashboard, action: () => navigate('/') },
-    { id: 'nav-gov', label: 'Governance', hint: 'View proposals', icon: Vote, action: () => navigate('/governance') },
-    { id: 'nav-uw', label: 'Underwriting', hint: 'Stake on agents', icon: ShieldCheck, action: () => navigate('/underwriting') },
-    { id: 'nav-jud', label: 'Judiciary', hint: 'Slashing events', icon: Scale, action: () => navigate('/judiciary') },
-  ];
-
-  const filtered = actions.filter(a => 
-    a.label.toLowerCase().includes(query.toLowerCase()) ||
-    a.hint.toLowerCase().includes(query.toLowerCase())
-  );
-
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
-        e.preventDefault();
-        setIsOpen(!isOpen);
-      }
-      if (e.key === 'Escape') setIsOpen(false);
-      
-      if (isOpen) {
-        if (e.key === 'ArrowDown') {
-          e.preventDefault();
-          setSelectedIndex(i => (i + 1) % filtered.length);
-        }
-        if (e.key === 'ArrowUp') {
-          e.preventDefault();
-          setSelectedIndex(i => (i - 1 + filtered.length) % filtered.length);
-        }
-        if (e.key === 'Enter' && filtered[selectedIndex]) {
-          filtered[selectedIndex].action();
-          setIsOpen(false);
-          setQuery('');
-        }
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, setIsOpen, filtered, selectedIndex]);
-
-  useEffect(() => {
-    if (isOpen) {
-      inputRef.current?.focus();
-      setSelectedIndex(0);
-    } else {
-      setQuery('');
-    }
-  }, [isOpen]);
-
-  useEffect(() => {
-    setSelectedIndex(0);
-  }, [query]);
-
-  if (!isOpen) return null;
-
-  return (
-    <div 
-      className="fixed inset-0 z-[100] bg-black/70 flex items-start justify-center pt-[20vh]" 
-      onClick={() => setIsOpen(false)}
-    >
-      <div 
-        className="w-full max-w-lg bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl overflow-hidden"
-        onClick={e => e.stopPropagation()}
-      >
-        {/* Search input */}
-        <div className="flex items-center px-4 h-12 border-b border-zinc-800">
-          <Search className="w-4 h-4 text-zinc-500 mr-3" />
-          <input 
-            ref={inputRef}
-            className="flex-1 bg-transparent text-white placeholder-zinc-500 focus:outline-none text-sm"
-            placeholder="Search commands..."
-            value={query}
-            onChange={e => setQuery(e.target.value)}
-          />
-          <kbd className="text-[10px] text-zinc-600 bg-zinc-800 px-1.5 py-0.5 rounded">ESC</kbd>
-        </div>
-        
-        {/* Results */}
-        <div className="max-h-64 overflow-y-auto p-1">
-          {filtered.length === 0 ? (
-            <div className="px-3 py-8 text-center text-sm text-zinc-500">No results found</div>
-          ) : (
-            filtered.map((item, idx) => (
-              <button
-                key={item.id}
-                onClick={() => { item.action(); setIsOpen(false); setQuery(''); }}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors ${
-                  idx === selectedIndex ? 'bg-zinc-800' : 'hover:bg-zinc-800/50'
-                }`}
-                onMouseEnter={() => setSelectedIndex(idx)}
-              >
-                <div className={`w-8 h-8 rounded-md flex items-center justify-center ${
-                  idx === selectedIndex ? 'bg-zinc-700' : 'bg-zinc-800'
-                }`}>
-                  <item.icon className="w-4 h-4 text-zinc-400" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm text-white">{item.label}</div>
-                  <div className="text-xs text-zinc-500">{item.hint}</div>
-                </div>
-                {idx === selectedIndex && (
-                  <kbd className="text-[10px] text-zinc-500 bg-zinc-700 px-1.5 py-0.5 rounded">↵</kbd>
-                )}
-              </button>
-            ))
-          )}
-        </div>
-      </div>
-    </div>
-  );
-};```
-
-###### File: shared/layout/Header.tsx
-###*Size: 8.0K, Lines: 141, Type: Java source, Unicode text, UTF-8 text*
+####### File: governance/shared/layout/Header.tsx
+####*Size: 8.0K, Lines: 172, Type: Java source, Unicode text, UTF-8 text*
 
 ```
 import React, { useState, useEffect, useRef } from 'react';
-import { Menu, Command, LogOut, Copy, ChevronDown, Circle } from 'lucide-react'; 
+import { Menu, LayoutGrid, LogOut, Copy, ChevronDown, ExternalLink } from 'lucide-react'; 
 import { useLocation, Link } from 'react-router-dom';
 import { useNetwork } from '../../context/NetworkContext';
 import { useToast } from '../../context/ToastContext'; 
-import { CommandPalette } from './CommandPalette'; 
+import { MegaMenu } from './MegaMenu'; 
 
 const ROUTE_NAMES: Record<string, string> = {
   '/': 'Dashboard',
@@ -2216,8 +4270,11 @@ const ROUTE_NAMES: Record<string, string> = {
 export const Header = ({ onMenuClick }: { onMenuClick: () => void }) => {
   const { isConnected, connectWallet, disconnectWallet, user, balance } = useNetwork();
   const { addToast } = useToast();
-  const [cmdOpen, setCmdOpen] = useState(false);
+  
+  // State for MegaMenu instead of CommandPalette
+  const [menuOpen, setMenuOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  
   const dropdownRef = useRef<HTMLDivElement>(null);
   const location = useLocation();
 
@@ -2229,6 +4286,19 @@ export const Header = ({ onMenuClick }: { onMenuClick: () => void }) => {
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Keyboard shortcut to open MegaMenu (Cmd+K or Cmd+M could work, sticking to click for now or Cmd+K as legacy alias)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        setMenuOpen(prev => !prev);
+      }
+      if (e.key === 'Escape') setMenuOpen(false);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
   const copyDid = () => {
@@ -2243,34 +4313,40 @@ export const Header = ({ onMenuClick }: { onMenuClick: () => void }) => {
   
   return (
     <>
-      <CommandPalette isOpen={cmdOpen} setIsOpen={setCmdOpen} />
+      <MegaMenu 
+        isOpen={menuOpen} 
+        onClose={() => setMenuOpen(false)} 
+        currentApp="governance" 
+      />
       
-      <header className="h-12 sticky top-0 z-30 border-b border-zinc-800 bg-zinc-950/80 backdrop-blur-sm flex items-center justify-between px-4">
+      <header className="h-14 sticky top-0 z-30 border-b border-zinc-800 bg-zinc-950/80 backdrop-blur-sm flex items-center justify-between px-4">
         
-        {/* Left: Menu + Breadcrumb */}
+        {/* Left: Mobile Menu + Breadcrumb */}
         <div className="flex items-center gap-3">
           <button onClick={onMenuClick} className="lg:hidden text-zinc-400 hover:text-white">
             <Menu className="w-5 h-5" />
           </button>
 
           <nav className="flex items-center text-sm">
-            <Link to="/" className="text-zinc-500 hover:text-white transition-colors">
+            <Link to="/" className="text-zinc-500 hover:text-white transition-colors font-semibold tracking-tight">
               IOI
             </Link>
             <span className="mx-2 text-zinc-700">/</span>
-            <span className="text-white font-medium">{currentPathName}</span>
+            <span className="text-white font-medium tracking-wide">{currentPathName}</span>
           </nav>
         </div>
 
-        {/* Center: Command trigger */}
-        <button 
-          onClick={() => setCmdOpen(true)}
-          className="hidden md:flex items-center h-8 px-3 bg-zinc-900 border border-zinc-800 rounded-md text-sm text-zinc-500 hover:border-zinc-700 hover:text-zinc-300 transition-colors"
-        >
-          <Command className="w-3.5 h-3.5 mr-2" />
-          <span className="mr-8">Search...</span>
-          <kbd className="text-[10px] text-zinc-600 bg-zinc-800 px-1.5 py-0.5 rounded">⌘K</kbd>
-        </button>
+        {/* Center: Network Switcher (Replaces Search) */}
+        <div className="hidden md:block">
+            <button 
+              onClick={() => setMenuOpen(true)}
+              className="group flex items-center gap-2 px-3 py-1.5 bg-zinc-900/50 border border-zinc-800 rounded-full text-xs text-zinc-400 hover:border-zinc-700 hover:text-white hover:bg-zinc-900 transition-all"
+            >
+              <LayoutGrid className="w-3.5 h-3.5 group-hover:text-cyan-400 transition-colors" />
+              <span>Network Services</span>
+              <kbd className="hidden lg:inline-block ml-2 text-[9px] bg-zinc-800 px-1 py-0.5 rounded text-zinc-500 group-hover:text-zinc-400">⌘K</kbd>
+            </button>
+        </div>
 
         {/* Right: Profile */}
         <div className="flex items-center gap-3" ref={dropdownRef}>
@@ -2278,51 +4354,60 @@ export const Header = ({ onMenuClick }: { onMenuClick: () => void }) => {
             <div className="relative">
               <button 
                 onClick={() => setProfileOpen(!profileOpen)}
-                className={`flex items-center gap-2 h-8 pl-3 pr-2 rounded-md border transition-colors ${
+                className={`flex items-center gap-3 h-9 pl-3 pr-2 rounded-full border transition-all duration-200 ${
                   profileOpen 
                     ? 'bg-zinc-800 border-zinc-700' 
-                    : 'border-transparent hover:bg-zinc-900'
+                    : 'border-zinc-800/50 hover:bg-zinc-900 hover:border-zinc-700'
                 }`}
               >
-                <span className="text-sm font-mono text-zinc-300">{balance.toLocaleString()} IOI</span>
-                <div className="w-6 h-6 rounded-full bg-gradient-to-br from-cyan-400 to-blue-500" />
+                <div className="text-right hidden sm:block">
+                    <div className="text-[10px] text-zinc-500 leading-none mb-0.5">Balance</div>
+                    <div className="text-xs font-mono text-zinc-200 leading-none">{balance.toLocaleString()} IOI</div>
+                </div>
+                <div className="w-6 h-6 rounded-full bg-gradient-to-br from-cyan-400 to-blue-500 ring-2 ring-zinc-950" />
                 <ChevronDown className={`w-3 h-3 text-zinc-500 transition-transform ${profileOpen ? 'rotate-180' : ''}`} />
               </button>
 
               {/* Dropdown */}
               {profileOpen && (
-                <div className="absolute top-full right-0 mt-2 w-56 bg-zinc-900 border border-zinc-800 rounded-lg shadow-xl overflow-hidden">
+                <div className="absolute top-full right-0 mt-2 w-64 bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl overflow-hidden animate-in slide-in-from-top-2 duration-200">
                   {/* Address */}
-                  <div className="p-3 border-b border-zinc-800">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs text-zinc-500">Address</span>
-                      <button onClick={copyDid} className="text-zinc-500 hover:text-white">
+                  <div className="p-4 border-b border-zinc-800 bg-zinc-950/30">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-xs font-medium text-zinc-500">Connected DID</span>
+                      <button onClick={copyDid} className="text-zinc-500 hover:text-white p-1 hover:bg-zinc-800 rounded">
                         <Copy className="w-3 h-3" />
                       </button>
                     </div>
-                    <div className="text-sm font-mono text-white mt-1">{user.economicDid}</div>
+                    <div className="text-xs font-mono text-cyan-400 break-all bg-cyan-950/20 border border-cyan-900/30 p-2 rounded">
+                        {user.economicDid}
+                    </div>
                   </div>
 
                   {/* Stats */}
                   <div className="grid grid-cols-2 divide-x divide-zinc-800 border-b border-zinc-800">
-                    <div className="p-3 text-center">
-                      <div className="text-[10px] text-zinc-500 uppercase">Reputation</div>
-                      <div className="text-sm font-medium text-white mt-0.5">{user.reputation}</div>
+                    <div className="p-3 text-center hover:bg-zinc-800/50 transition-colors">
+                      <div className="text-[10px] text-zinc-500 uppercase font-bold tracking-wider">Reputation</div>
+                      <div className="text-lg font-medium text-white mt-1">{user.reputation}</div>
                     </div>
-                    <div className="p-3 text-center">
-                      <div className="text-[10px] text-zinc-500 uppercase">Voting Power</div>
-                      <div className="text-sm font-medium text-white mt-0.5">{(balance / 1000).toFixed(1)}k</div>
+                    <div className="p-3 text-center hover:bg-zinc-800/50 transition-colors">
+                      <div className="text-[10px] text-zinc-500 uppercase font-bold tracking-wider">Voting Power</div>
+                      <div className="text-lg font-medium text-white mt-1">{(balance / 1000).toFixed(1)}k</div>
                     </div>
                   </div>
 
                   {/* Actions */}
-                  <div className="p-1">
+                  <div className="p-2 space-y-1">
+                    <a href="#" className="flex items-center justify-between px-3 py-2 text-xs text-zinc-400 hover:text-white hover:bg-zinc-800 rounded transition-colors group">
+                        <span>View on Explorer</span>
+                        <ExternalLink className="w-3 h-3 text-zinc-600 group-hover:text-zinc-400" />
+                    </a>
                     <button 
                       onClick={() => { disconnectWallet(); setProfileOpen(false); }}
-                      className="w-full flex items-center px-3 py-2 text-sm text-zinc-400 hover:text-white hover:bg-zinc-800 rounded transition-colors"
+                      className="w-full flex items-center px-3 py-2 text-xs text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 rounded transition-colors"
                     >
-                      <LogOut className="w-4 h-4 mr-2" />
-                      Disconnect
+                      <LogOut className="w-3 h-3 mr-2" />
+                      Disconnect Session
                     </button>
                   </div>
                 </div>
@@ -2331,9 +4416,9 @@ export const Header = ({ onMenuClick }: { onMenuClick: () => void }) => {
           ) : (
             <button 
               onClick={connectWallet}
-              className="h-8 px-3 rounded-md bg-white text-zinc-900 text-sm font-medium hover:bg-zinc-200 transition-colors"
+              className="h-9 px-4 rounded-full bg-white text-zinc-950 text-xs font-bold uppercase tracking-wide hover:bg-zinc-200 transition-colors shadow-[0_0_10px_rgba(255,255,255,0.1)]"
             >
-              Connect
+              Connect Wallet
             </button>
           )}
         </div>
@@ -2342,10 +4427,197 @@ export const Header = ({ onMenuClick }: { onMenuClick: () => void }) => {
   );
 };```
 
-###### File: shared/layout/Sidebar.tsx
-###*Size: 8.0K, Lines: 135, Type: Java source, ASCII text*
+####### File: governance/shared/layout/MegaMenu.tsx
+####*Size: 8.0K, Lines: 102, Type: Java source, ASCII text*
 
 ```
+import React from 'react';
+import { ExternalLink, ArrowRight } from 'lucide-react';
+import { IOI_APPS, getAppUrl, NetworkAppId } from '../../core/network-config';
+
+interface MegaMenuProps {
+  isOpen: boolean;
+  onClose: () => void;
+  currentApp: NetworkAppId;
+}
+
+export const MegaMenu = ({ isOpen, onClose, currentApp }: MegaMenuProps) => {
+  if (!isOpen) return null;
+
+  return (
+    <div 
+      className="fixed inset-0 z-[100] flex items-center justify-center p-4" 
+      onClick={onClose}
+    >
+      {/* Backdrop */}
+      <div className="absolute inset-0 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200" />
+
+      {/* Menu Content */}
+      <div 
+        className="relative w-full max-w-4xl bg-zinc-950/90 border border-zinc-800 rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 slide-in-from-bottom-2 duration-200"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="px-8 py-6 border-b border-zinc-800 flex items-center justify-between bg-zinc-900/30">
+          <div className="flex items-center gap-3">
+             <div className="w-8 h-8 bg-gradient-to-tr from-cyan-500 to-blue-600 rounded flex items-center justify-center shadow-lg shadow-cyan-500/20">
+                <svg viewBox="0 0 24 24" className="w-5 h-5 text-white fill-current"><path d="M12 2L2 7l10 5 10-5-10-5zm0 9l2.5-1.25L12 8.5l-2.5 1.25L12 11zm0 2.5l-5-2.5-5 2.5L12 22l10-8.5-5-2.5-5 2.5z"/></svg>
+             </div>
+             <div>
+                <h2 className="text-lg font-bold text-white tracking-tight">IOI Network</h2>
+                <p className="text-xs text-zinc-500 font-mono">Select a subsystem to launch</p>
+             </div>
+          </div>
+          <button 
+            onClick={onClose}
+            className="text-xs font-mono text-zinc-500 hover:text-white px-3 py-1.5 rounded border border-zinc-800 hover:bg-zinc-800 transition-colors"
+          >
+            ESC
+          </button>
+        </div>
+
+        <div className="p-8 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {IOI_APPS.map((app) => {
+            const isCurrent = app.id === currentApp;
+            return (
+              <a
+                key={app.id}
+                href={isCurrent ? '#' : getAppUrl(app)}
+                onClick={isCurrent ? (e) => e.preventDefault() : undefined}
+                className={`
+                  group relative p-5 rounded-xl border transition-all duration-300
+                  ${isCurrent 
+                    ? 'bg-zinc-900/50 border-cyan-500/20 cursor-default ring-1 ring-cyan-500/20' 
+                    : 'bg-zinc-900/20 border-zinc-800 hover:bg-zinc-900 hover:border-zinc-600 hover:shadow-xl hover:shadow-black/50 hover:-translate-y-0.5'}
+                `}
+              >
+                <div className="flex items-start justify-between mb-4">
+                  <div className={`p-2.5 rounded-lg transition-colors ${isCurrent ? 'bg-cyan-500/10 text-cyan-400' : 'bg-zinc-950 border border-zinc-800 text-zinc-400 group-hover:text-white group-hover:border-zinc-600'}`}>
+                    <app.icon className="w-6 h-6" />
+                  </div>
+                  <div className="flex items-center gap-2">
+                      {app.status === 'live' && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]"></span>}
+                      {app.status === 'beta' && <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.5)]"></span>}
+                      {app.status === 'maintenance' && <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>}
+                  </div>
+                </div>
+                
+                <h3 className={`text-base font-semibold mb-1.5 flex items-center gap-2 ${isCurrent ? 'text-white' : 'text-zinc-200 group-hover:text-cyan-400 transition-colors'}`}>
+                  {app.name}
+                  {!isCurrent && <ArrowRight className="w-3.5 h-3.5 opacity-0 -translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-300" />}
+                </h3>
+                <p className="text-xs text-zinc-500 leading-relaxed font-medium">
+                  {app.description}
+                </p>
+
+                {isCurrent && (
+                    <div className="absolute bottom-4 right-4 text-[10px] font-bold text-cyan-500 bg-cyan-950/30 px-2 py-0.5 rounded border border-cyan-900/50">
+                        CURRENT
+                    </div>
+                )}
+              </a>
+            );
+          })}
+        </div>
+
+        <div className="px-8 py-4 bg-zinc-950 border-t border-zinc-800 text-[10px] text-zinc-600 font-mono flex justify-between items-center">
+          <div className="flex gap-4">
+              <span className="flex items-center gap-1.5"><span className="w-1 h-1 bg-emerald-500 rounded-full"></span>Mainnet: Operational</span>
+              <span className="hidden sm:inline">|</span>
+              <span className="hidden sm:inline">Block: 12,940,221</span>
+          </div>
+          <div className="flex gap-4">
+              <a href="#" className="hover:text-zinc-400 transition-colors">Support</a>
+              <a href="#" className="hover:text-zinc-400 transition-colors">Status</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};```
+
+####### File: governance/shared/layout/NetworkHeader.tsx
+####*Size: 4.0K, Lines: 72, Type: HTML document, ASCII text, with very long lines (783)*
+
+```
+// File: governance/shared/layout/NetworkHeader.tsx
+import React from 'react';
+import { IOI_APPS, getAppUrl, NetworkAppId } from '../../core/network-config';
+import ioiLogo from '../../assets/ioi-logo-dark.svg';
+
+interface NetworkHeaderProps {
+  currentAppId: NetworkAppId;
+}
+
+export const NetworkHeader = ({ currentAppId }: NetworkHeaderProps) => {
+  return (
+    <nav className="h-9 bg-black border-b border-zinc-800 flex items-center justify-between px-4 z-[60] fixed top-0 w-full">
+      {/* Left: Network Logo & App Switcher */}
+      <div className="flex items-center gap-6">
+        {/* Master Brand */}
+        <a href={getAppUrl(IOI_APPS[0])} className="flex items-center gap-2 group">
+          <img 
+            src={ioiLogo} 
+            alt="IOI Network" 
+            className="h-4 w-auto opacity-90 group-hover:opacity-100 transition-opacity" 
+          />
+        </a>
+
+        {/* Divider */}
+        <div className="h-3 w-px bg-zinc-800" />
+
+        {/* App Links (Desktop) */}
+        <div className="hidden md:flex items-center gap-1">
+          {IOI_APPS.map((app) => {
+            const isActive = app.id === currentAppId;
+            return (
+              <a
+                key={app.id}
+                href={getAppUrl(app)}
+                className={`
+                  flex items-center gap-2 px-3 py-1 rounded text-[11px] font-medium transition-all
+                  ${isActive 
+                    ? 'text-white bg-zinc-900 shadow-sm ring-1 ring-zinc-800' 
+                    : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900/50'}
+                `}
+              >
+                <span className={isActive ? 'text-cyan-400' : 'opacity-70'}>
+                  <app.icon className="w-3.5 h-3.5" />
+                </span>
+                {app.name}
+              </a>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Right: Global Utilities */}
+      <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2 text-[10px] text-zinc-500 font-mono">
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+          <span>Mainnet: <span className="text-zinc-300">Operational</span></span>
+        </div>
+
+        <a 
+          href="https://github.com/ioi-network" 
+          target="_blank" 
+          rel="noreferrer"
+          className="text-zinc-500 hover:text-white transition-colors"
+        >
+          <span className="sr-only">GitHub</span>
+          <svg viewBox="0 0 24 24" className="w-4 h-4 fill-current" aria-hidden="true">
+            <path fillRule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z" clipRule="evenodd" />
+          </svg>
+        </a>
+      </div>
+    </nav>
+  );
+};```
+
+####### File: governance/shared/layout/Sidebar.tsx
+####*Size: 8.0K, Lines: 145, Type: Java source, ASCII text*
+
+```
+// File: governance/shared/layout/Sidebar.tsx
 import React, { useState, useEffect } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { 
@@ -2355,20 +4627,10 @@ import {
   Scale, 
   ChevronLeft,
   ChevronRight,
-  Circle
+  Circle,
+  Grid
 } from 'lucide-react';
-import ioiLogo from '../../assets/ioi-logo-dark.svg';
-import logoFinal from '../../assets/logo-final.svg';
-
-const IOILogo = ({ collapsed }: { collapsed: boolean }) => (
-  <div className="flex items-center justify-center w-full">
-    <img 
-      src={collapsed ? logoFinal : ioiLogo} 
-      alt="IOI Network" 
-      className={collapsed ? "w-8 h-8" : "h-8 w-auto"} 
-    />
-  </div>
-);
+import { MegaMenu } from './MegaMenu';
 
 const navItems = [
   { name: 'Dashboard', icon: LayoutDashboard, path: '/' },
@@ -2390,6 +4652,7 @@ export const Sidebar = ({
 }) => {
   const location = useLocation();
   const [blockHeight, setBlockHeight] = useState(12940221);
+  const [megaMenuOpen, setMegaMenuOpen] = useState(false);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -2400,6 +4663,12 @@ export const Sidebar = ({
 
   return (
     <>
+      <MegaMenu 
+        isOpen={megaMenuOpen} 
+        onClose={() => setMegaMenuOpen(false)} 
+        currentApp="governance" 
+      />
+
       {/* Mobile backdrop */}
       {mobileOpen && (
         <div 
@@ -2410,8 +4679,9 @@ export const Sidebar = ({
 
       {/* Sidebar */}
       <aside className={`
-        fixed top-0 left-0 z-50 h-full bg-zinc-950 border-r border-zinc-800
+        fixed left-0 z-50 bg-zinc-950 border-r border-zinc-800
         transform transition-all duration-200 ease-out
+        top-9 bottom-0 /* Pushed down by NetworkHeader */
         ${mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
         ${collapsed ? 'w-16' : 'w-56'} 
         flex flex-col
@@ -2420,15 +4690,26 @@ export const Sidebar = ({
         {/* Collapse toggle */}
         <button 
           onClick={() => setCollapsed(!collapsed)}
-          className="hidden lg:flex absolute -right-3 top-16 w-6 h-6 items-center justify-center bg-zinc-900 border border-zinc-800 text-zinc-500 hover:text-white rounded-full transition-colors"
+          className="hidden lg:flex absolute -right-3 top-16 w-6 h-6 items-center justify-center bg-zinc-900 border border-zinc-800 text-zinc-500 hover:text-white rounded-full transition-colors z-50"
         >
           {collapsed ? <ChevronRight className="w-3 h-3" /> : <ChevronLeft className="w-3 h-3" />}
         </button>
 
-        {/* Logo */}
-        <div className={`h-14 flex items-center border-b border-zinc-800 ${collapsed ? 'justify-center px-0' : 'px-4'}`}>
-          <IOILogo collapsed={collapsed} />
-        </div>
+        {/* App Context Header (Replaces SVG Logo) */}
+        <button 
+          onClick={() => setMegaMenuOpen(true)}
+          className={`h-14 flex items-center border-b border-zinc-800 hover:bg-zinc-900 transition-colors group relative ${collapsed ? 'justify-center px-0' : 'px-4 justify-between'}`}
+          title="Switch App"
+        >
+          {collapsed ? (
+            <Grid className="w-5 h-5 text-zinc-500 group-hover:text-cyan-400" />
+          ) : (
+            <>
+              <span className="font-bold text-white tracking-tight">Governance</span>
+              <span className="text-[10px] bg-zinc-900 border border-zinc-800 px-1.5 py-0.5 rounded text-zinc-500 group-hover:border-zinc-700 transition-colors">v2.4</span>
+            </>
+          )}
+        </button>
 
         {/* Navigation */}
         <nav className="flex-1 py-4 px-2">
@@ -2483,70 +4764,8 @@ export const Sidebar = ({
   );
 };```
 
-###### File: shared/layout/StatusBar.tsx
-###*Size: 4.0K, Lines: 56, Type: Java source, ASCII text*
-
-```
-import React, { useState, useEffect } from 'react';
-import { Wifi, Activity, Zap, Server, GitCommit, Database } from 'lucide-react';
-
-export const StatusBar = () => {
-  // Telemetry Simulation (Moved from Header.tsx)
-  const [blockHeight, setBlockHeight] = useState(12940221);
-  const [latency, setLatency] = useState(12);
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      if (Math.random() > 0.7) setBlockHeight(h => h + 1);
-      setLatency(Math.floor(Math.random() * (24 - 8) + 8));
-    }, 2000);
-    return () => clearInterval(interval);
-  }, []);
-
-  return (
-    <footer className="fixed bottom-0 left-0 right-0 h-7 bg-ioi-navy border-t border-ioi-border z-[60] flex items-center justify-between px-3 text-[10px] font-mono text-gray-500 select-none bg-opacity-95 backdrop-blur">
-      {/* Left: Connection Details */}
-      <div className="flex items-center gap-4">
-        <div className="flex items-center gap-1.5 hover:text-ioi-cyan cursor-help transition-colors">
-          <Server className="w-3 h-3" />
-          <span className="hidden sm:inline">Mainnet-Beta</span>
-          <span className="sm:hidden">Mainnet</span>
-        </div>
-        
-        <div className={`flex items-center gap-1.5 ${latency < 20 ? 'text-green-400' : 'text-amber-400'}`}>
-          <Wifi className="w-3 h-3" />
-          <span>{latency}ms</span>
-        </div>
-
-        <div className="flex items-center gap-1.5 hover:text-white transition-colors">
-            <Database className="w-3 h-3" />
-            <span className="hidden sm:inline">Node: 0x8f...2a1</span>
-        </div>
-      </div>
-
-      {/* Right: Network Stats */}
-      <div className="flex items-center gap-4">
-        <div className="flex items-center gap-1.5 text-ioi-amber" title="Gas Price">
-           <Zap className="w-3 h-3" />
-           <span>4 gwei</span>
-        </div>
-        
-        <div className="flex items-center gap-1.5 text-ioi-cyan">
-           <GitCommit className="w-3 h-3" />
-           <span>#{blockHeight.toLocaleString()}</span>
-        </div>
-        
-        <div className="hidden sm:flex items-center gap-1.5 text-ioi-muted">
-           <Activity className="w-3 h-3" />
-           <span>v2.4.0-rc1</span>
-        </div>
-      </div>
-    </footer>
-  );
-};```
-
-##### File: shared/Skeleton.tsx
-##*Size: 8.0K, Lines: 194, Type: HTML document, ASCII text*
+###### File: governance/shared/Skeleton.tsx
+###*Size: 8.0K, Lines: 194, Type: HTML document, ASCII text*
 
 ```
 import React from 'react';
@@ -2745,8 +4964,8 @@ export const Stagger = ({
   </div>
 );```
 
-##### File: shared/UIComponents.tsx
-##*Size: 4.0K, Lines: 128, Type: Java source, ASCII text*
+###### File: governance/shared/UIComponents.tsx
+###*Size: 4.0K, Lines: 128, Type: Java source, ASCII text*
 
 ```
 import React from 'react';
@@ -2879,10 +5098,11 @@ export const OptimisticValue = ({
   </span>
 );```
 
-#### File: App.tsx
-#*Size: 4.0K, Lines: 54, Type: Java source, ASCII text*
+##### File: governance/App.tsx
+##*Size: 4.0K, Lines: 61, Type: Java source, ASCII text*
 
 ```
+// File: governance/App.tsx
 import React, { useState } from 'react';
 import { HashRouter as Router, Routes, Route } from 'react-router-dom';
 import { NetworkProvider } from './context/NetworkContext';
@@ -2891,6 +5111,7 @@ import { ToastProvider } from './context/ToastContext';
 // Layout
 import { Sidebar } from './shared/layout/Sidebar';
 import { Header } from './shared/layout/Header';
+import { NetworkHeader } from './shared/layout/NetworkHeader';
 
 // Features
 import Dashboard from './features/dashboard/Dashboard';
@@ -2906,30 +5127,35 @@ export default function App() {
     <ToastProvider>
       <NetworkProvider>
         <Router>
-          <div className="min-h-screen bg-zinc-950 flex text-zinc-100">
+          <div className="min-h-screen bg-zinc-950 flex flex-col text-zinc-100">
             
-            <Sidebar 
-              mobileOpen={mobileOpen} 
-              setMobileOpen={setMobileOpen} 
-              collapsed={collapsed} 
-              setCollapsed={setCollapsed}
-            />
-            
-            <div className={`flex-1 flex flex-col min-h-screen transition-all duration-200 ${
-              collapsed ? 'lg:pl-16' : 'lg:pl-56'
-            }`}>
-              <Header onMenuClick={() => setMobileOpen(true)} />
+            {/* Global Top Bar */}
+            <NetworkHeader currentAppId="governance" />
+
+            <div className="flex flex-1 relative pt-9"> {/* pt-9 accounts for fixed header */}
+              <Sidebar 
+                mobileOpen={mobileOpen} 
+                setMobileOpen={setMobileOpen} 
+                collapsed={collapsed} 
+                setCollapsed={setCollapsed}
+              />
               
-              <main className="flex-1 p-4 lg:p-6 overflow-x-hidden">
-                <div className="max-w-6xl mx-auto">
-                  <Routes>
-                    <Route path="/" element={<Dashboard />} />
-                    <Route path="/governance" element={<Governance />} />
-                    <Route path="/underwriting" element={<Underwriting />} />
-                    <Route path="/judiciary" element={<Judiciary />} />
-                  </Routes>
-                </div>
-              </main>
+              <div className={`flex-1 flex flex-col min-h-[calc(100vh-2.25rem)] transition-all duration-200 ${
+                collapsed ? 'lg:pl-16' : 'lg:pl-56'
+              }`}>
+                <Header onMenuClick={() => setMobileOpen(true)} />
+                
+                <main className="flex-1 p-4 lg:p-6 overflow-x-hidden">
+                  <div className="max-w-6xl mx-auto">
+                    <Routes>
+                      <Route path="/" element={<Dashboard />} />
+                      <Route path="/governance" element={<Governance />} />
+                      <Route path="/underwriting" element={<Underwriting />} />
+                      <Route path="/judiciary" element={<Judiciary />} />
+                    </Routes>
+                  </div>
+                </main>
+              </div>
             </div>
             
           </div>
@@ -2939,8 +5165,8 @@ export default function App() {
   );
 }```
 
-#### File: index.html
-#*Size: 4.0K, Lines: 135, Type: HTML document, ASCII text*
+##### File: governance/index.html
+##*Size: 4.0K, Lines: 135, Type: HTML document, ASCII text*
 
 ```html
 <!DOCTYPE html>
@@ -3080,8 +5306,8 @@ export default function App() {
   </body>
 </html>```
 
-#### File: index.tsx
-#*Size: 4.0K, Lines: 14, Type: Java source, ASCII text*
+##### File: governance/index.tsx
+##*Size: 4.0K, Lines: 14, Type: Java source, ASCII text*
 
 ```
 import React from 'react';
@@ -3100,35 +5326,105 @@ root.render(
   </React.StrictMode>
 );```
 
-#### File: metadata.json
-#*Size: 4.0K, Lines: 3, Type: JSON data*
+##### File: governance/metadata.json
+##*Size: 4.0K, Lines: 3, Type: JSON data*
 
-#*File content not included (exceeds threshold or non-text file)*
+##*File content not included (exceeds threshold or non-text file)*
 
-#### File: package.json
-#*Size: 4.0K, Lines: 24, Type: JSON data*
+##### File: governance/package.json
+##*Size: 4.0K, Lines: 24, Type: JSON data*
 
-#*File content not included (exceeds threshold or non-text file)*
+##*File content not included (exceeds threshold or non-text file)*
 
-#### File: package-lock.json
-#*Size: 80K, Lines: 2281, Type: JSON data*
+##### File: governance/package-lock.json
+##*Size: 80K, Lines: 2281, Type: JSON data*
 
-#*File content not included (exceeds threshold or non-text file)*
+##*File content not included (exceeds threshold or non-text file)*
 
-#### File: README.md
-#*Size: 4.0K, Lines: 1, Type: ASCII text*
+##### File: governance/README.md
+##*Size: 4.0K, Lines: 71, Type: Unicode text, UTF-8 text*
 
 ```markdown
-# IOI Network: Governance Portal
+# IOI Governance Portal
+
+The command center for the IOI DAO. This application allows token holders to vote on protocol upgrades, calibrate the AI Judiciary, and underwrite agent liability.
+
+**Live URL:** [gov.ioi.network](https://gov.ioi.network)
+
+## 🏛 Core Features
+
+This application implements the governance and economic primitives defined in the IOI Whitepaper:
+
+### 1. Protocol Governance
+*   **PIP (Protocol Improvement Proposals):** Voting interfaces for upgrading the A-DMFT consensus or changing base fees.
+*   **Epoch Visualization:** Real-time tracking of network epochs (Registration -> Snapshot -> Voting -> Execution).
+
+### 2. The Judiciary (Arbitration Lane)
+*   **Dialectic Protocol Visualization:** A UI to view the "AI Courtroom" process where the Prosecutor (AI) and Defender (AI) argue over a slashable offense.
+*   **Juror Calibration:** Interfaces for updating the `Recommended_Juror_Model_CID` (e.g., upgrading from Llama-3 to DeepSeek).
+
+### 3. Underwriting (Insurance Pools)
+*   **Recursive Liability:** A hierarchical view of Agent Swarms to visualize bond coverage.
+*   **Delegated Staking:** Users stake $IOI tokens on specific Agent Manifests to earn yield in exchange for assuming liability risk.
+
+## ⚡️ Technical Stack
+
+*   **Framework:** React 19 + Vite
+*   **Styling:** Tailwind CSS (Zinc/Dark mode only - "Financial Terminal" aesthetic)
+*   **State:** React Context (Simulating Optimistic UI updates for high-latency settlement)
+*   **Visualization:** Recharts (for TVL and Voting Power) + Custom DAG Visualizers
+
+## 🚀 Development
+
+### Setup
+
+Ensure you have installed dependencies at the monorepo root.
+
+```bash
+# From root
+pnpm install
 ```
 
-#### File: tsconfig.json
-#*Size: 4.0K, Lines: 28, Type: JSON data*
+### Run Locally
 
-#*File content not included (exceeds threshold or non-text file)*
+```bash
+# From root
+pnpm --filter governance dev
 
-#### File: vite.config.ts
-#*Size: 4.0K, Lines: 23, Type: Java source, ASCII text*
+# OR from apps/governance
+npm run dev
+```
+
+### Architecture Note: Optimistic UI
+
+Because the IOI Mainnet (Mode 2) is a settlement layer, block times may be slower than typical interaction speeds. This app uses an **Optimistic Context** (`NetworkContext.tsx`) to simulate transaction confirmations instantly while "pending" on the simulated chain.
+
+## 📂 Directory Structure
+
+```
+/features
+  /dashboard      # Network overview (TVL, Active Proposals)
+  /governance     # Voting logic and Proposal Cards
+  /judiciary      # Slashing events and Dialectic Views
+  /underwriting   # Agent Staking and Hierarchy visualization
+/context          # Network simulation (Wallet, Balance, Pending Tx)
+/shared           # Reusable skeletons and layout components
+```
+
+## 🧪 Mock Data
+
+During development, the app runs against `core/constants.ts` which simulates:
+*   Active Agents (Tier 1 - Tier 3)
+*   Recent Slashing Events (Equivocation proofs)
+*   Active Proposals (PIP-104, JCP-009)```
+
+##### File: governance/tsconfig.json
+##*Size: 4.0K, Lines: 28, Type: JSON data*
+
+##*File content not included (exceeds threshold or non-text file)*
+
+##### File: governance/vite.config.ts
+##*Size: 4.0K, Lines: 23, Type: Java source, ASCII text*
 
 ```typescript
 import path from 'path';
@@ -3155,4 +5451,134 @@ export default defineConfig(({ mode }) => {
     };
 });
 ```
+
+#### Directory: www
+
+##### Directory: www/src
+
+###### Directory: www/src/features
+
+####### Directory: www/src/features/landing
+
+###### Directory: www/src/shared
+
+###### File: www/src/App.tsx
+###*Size: 8.0K, Lines: 114, Type: HTML document, ASCII text*
+
+```
+import React, { useState } from 'react';
+import { ShieldCheck, BookOpen, BarChart3, ArrowRight, Terminal, Globe } from 'lucide-react';
+
+const SubdomainCard = ({ 
+  title, 
+  desc, 
+  icon: Icon, 
+  url, 
+  status, 
+  metric 
+}: { 
+  title: string; 
+  desc: string; 
+  icon: any; 
+  url: string;
+  status: 'online' | 'maintenance' | 'beta';
+  metric?: string;
+}) => (
+  <a 
+    href={url}
+    className="group relative flex flex-col p-6 rounded-xl border border-zinc-800 bg-zinc-900/30 hover:bg-zinc-900/80 hover:border-zinc-700 transition-all duration-300"
+  >
+    <div className="flex items-start justify-between mb-4">
+      <div className="p-3 rounded-lg bg-zinc-950 border border-zinc-800 group-hover:border-zinc-700 transition-colors">
+        <Icon className="w-6 h-6 text-zinc-400 group-hover:text-white transition-colors" />
+      </div>
+      <div className="flex items-center gap-2">
+        {status === 'online' && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)]" />}
+        {status === 'beta' && <span className="w-1.5 h-1.5 rounded-full bg-cyan-500 shadow-[0_0_8px_rgba(6,182,212,0.4)]" />}
+        <span className="text-[10px] font-mono uppercase text-zinc-500">{status}</span>
+      </div>
+    </div>
+    
+    <h3 className="text-lg font-medium text-white mb-2 group-hover:text-cyan-400 transition-colors flex items-center gap-2">
+      {title}
+      <ArrowRight className="w-4 h-4 opacity-0 -translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-300" />
+    </h3>
+    <p className="text-sm text-zinc-500 leading-relaxed mb-6 flex-1">
+      {desc}
+    </p>
+
+    {metric && (
+      <div className="pt-4 border-t border-zinc-800/50 flex items-center justify-between">
+        <span className="text-xs text-zinc-600 font-mono">Telemetry</span>
+        <span className="text-xs text-zinc-300 font-mono">{metric}</span>
+      </div>
+    )}
+  </a>
+);
+
+export default function RootApp() {
+  return (
+    <div className="min-h-screen bg-zinc-950 text-zinc-100 font-sans selection:bg-cyan-500/20">
+      {/* Background Grid */}
+      <div className="fixed inset-0 bg-[linear-gradient(rgba(255,255,255,0.02)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.02)_1px,transparent_1px)] bg-[size:24px_24px] pointer-events-none" />
+      
+      <div className="relative z-10 max-w-6xl mx-auto px-6 py-20">
+        <header className="mb-20">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="w-10 h-10 bg-zinc-900 border border-zinc-800 rounded-lg flex items-center justify-center">
+              <Globe className="w-5 h-5 text-white" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-semibold text-white tracking-tight">IOI Network</h1>
+              <p className="text-sm text-zinc-500 font-mono">Mainnet Gateway v2.4.0</p>
+            </div>
+          </div>
+          <p className="text-zinc-400 max-w-2xl leading-relaxed">
+            The IOI Network is a decentralized infrastructure layer for autonomous AI agents. 
+            Access the protocol subsystems below.
+          </p>
+        </header>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <SubdomainCard 
+            title="Governance"
+            url="https://gov.ioi.network"
+            icon={ShieldCheck}
+            desc="Vote on protocol upgrades, manage the judiciary, and underwrite agent swarms."
+            status="online"
+            metric="TVL: $542M"
+          />
+          
+          <SubdomainCard 
+            title="Technical Core"
+            url="https://docs.ioi.network"
+            icon={BookOpen}
+            desc="Developer documentation, kernel specifications, and live source verification."
+            status="online"
+            metric="v2.4.0-rc1"
+          />
+          
+          <SubdomainCard 
+            title="Network Stats"
+            url="https://stats.ioi.network"
+            icon={BarChart3}
+            desc="Real-time block explorer, validator metrics, and consensus finality charts."
+            status="beta"
+            metric="1.2s Finality"
+          />
+        </div>
+
+        <footer className="mt-24 pt-8 border-t border-zinc-900 flex items-center justify-between text-xs text-zinc-600 font-mono">
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-emerald-500" />
+            <span>Systems Normal</span>
+          </div>
+          <div>
+            &copy; 2026 IOI Foundation
+          </div>
+        </footer>
+      </div>
+    </div>
+  );
+}```
 

@@ -1,1 +1,4 @@
 ./tools
+./apps/governance/node_modules
+./apps/documentation/node_modules
+node_modules

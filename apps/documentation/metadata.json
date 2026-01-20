@@ -1,0 +1,5 @@
+{
+  "name": "IOI Network Docs Explorer",
+  "description": "A high-fidelity developer portal and documentation mapping tool for the IOI Network, strictly following the physical architecture of the SDKs and Rust Kernel.",
+  "requestFramePermissions": []
+}
