@@ -3,3 +3,4 @@
 ./apps/documentation/node_modules
 node_modules
 codebase_snapshot.md
+package-lock.json
