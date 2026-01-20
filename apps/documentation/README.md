@@ -1,20 +1,40 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# IOI Network Documentation
 
-# Run and deploy your AI Studio app
+The official technical reference for the IOI Kernel, Swarm SDK, and Driver Kit (DDK).
 
-This contains everything you need to run your app locally.
+**Live URL:** [docs.ioi.network](https://docs.ioi.network)
 
-View your app in AI Studio: https://ai.studio/apps/drive/1HW3xGCi4JQmFRm9fFhMClDuuSNvKddzY
+## Features
 
-## Run Locally
+*   **Drift Detection:** Automatically compares documentation code blocks against the actual Rust source code (`../../crates`) to warn about outdated examples.
+*   **Multi-Repo Navigation:** Unified sidebar for Kernel, SDK, and DDK documentation.
+*   **Source Linking:** Direct links to the relevant source files for every concept.
 
-**Prerequisites:**  Node.js
+## Setup
 
+This app is part of the IOI Monorepo and depends on the shared `@ioi/ui` package.
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+### Prerequisites
+*   Node.js 18+
+*   npm or pnpm
+
+### Running Locally
+
+1.  **Install Dependencies** (from the monorepo root):
+    ```bash
+    npm install
+    ```
+
+2.  **Start the Development Server**:
+    ```bash
+    npm run dev --workspace=apps/documentation
+    ```
+
+3.  Open [http://localhost:3002](http://localhost:3002)
+
+## Architecture
+
+*   **Framework:** React 19 + Vite
+*   **Rendering:** `react-markdown` + `rehype-highlight`
+*   **Shared UI:** Imports components from `../../packages/ui`
+*   **Content:** Markdown files are served from `public/docs/`.
