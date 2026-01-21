@@ -1,4 +1,6 @@
 public/docs/
+public/sources/
+.temp_core/
 .temp_clones/
 node_modules/
 .package-lock.json
