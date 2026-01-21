@@ -1,0 +1,20 @@
+name: Trigger Docs Rebuild
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'docs/**'
+      - 'crates/**'
+
+jobs:
+  notify-frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch Signal (Zero Dependency)
+        run: |
+          curl -X POST https://api.github.com/repos/ioi-foundation/ioi-network/dispatches \
+          -H 'Accept: application/vnd.github.everest-preview+json' \
+          -u ${{ secrets.PAT_TOKEN }} \
+          --data '{"event_type": "update-docs", "client_payload": {}}'

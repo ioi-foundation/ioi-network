@@ -1,0 +1,4 @@
+public/docs/
+.temp_clones/
+node_modules/
+.package-lock.json
