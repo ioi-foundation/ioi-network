@@ -1,0 +1,511 @@
+// Path: crates/services/src/identity/mod.rs
+use async_trait::async_trait;
+use ioi_api::identity::CredentialsView;
+use ioi_api::lifecycle::OnEndBlock;
+use ioi_api::services::{BlockchainService, UpgradableService};
+use ioi_api::state::StateAccess;
+use ioi_api::transaction::context::TxContext;
+// [CHANGED] Use MldsaPublicKey instead of DilithiumPublicKey
+use ioi_crypto::sign::{dilithium::MldsaPublicKey, eddsa::Ed25519PublicKey};
+use ioi_types::app::{
+    account_id_from_key_material, read_validator_sets, write_validator_sets, AccountId,
+    ActiveKeyRecord, BootAttestation, Credential, RotationProof, SignatureSuite, ValidatorSetV1,
+};
+use ioi_types::codec;
+use ioi_types::error::{StateError, TransactionError, UpgradeError};
+use ioi_types::keys::{
+    IDENTITY_CREDENTIALS_PREFIX, IDENTITY_PROMOTION_INDEX_PREFIX, IDENTITY_ROTATION_NONCE_PREFIX,
+    VALIDATOR_SET_KEY,
+};
+use ioi_types::service_configs::{Capabilities, MigrationConfig};
+use libp2p::identity::PublicKey as Libp2pPublicKey;
+use parity_scale_codec::{Decode, Encode};
+use std::any::Any;
+
+const IDENTITY_ATTESTATION_PREFIX: &[u8] = b"identity::attestation::";
+
+#[derive(Debug, Clone)]
+pub struct IdentityHub {
+    pub config: MigrationConfig,
+}
+
+// --- Helper struct for deserializing parameters for the `rotate_key` method ---
+#[derive(Encode, Decode)]
+pub struct RotateKeyParams {
+    pub proof: RotationProof,
+}
+
+fn u64_from_le_bytes(bytes: Option<&Vec<u8>>) -> u64 {
+    bytes
+        .and_then(|b| b.as_slice().try_into().ok())
+        .map(u64::from_le_bytes)
+        .unwrap_or(0)
+}
+
+impl IdentityHub {
+    pub fn new(config: MigrationConfig) -> Self {
+        Self { config }
+    }
+
+    fn get_credentials_key(account_id: &AccountId) -> Vec<u8> {
+        [IDENTITY_CREDENTIALS_PREFIX, account_id.as_ref()].concat()
+    }
+    fn get_index_key(height: u64) -> Vec<u8> {
+        [IDENTITY_PROMOTION_INDEX_PREFIX, &height.to_le_bytes()].concat()
+    }
+    fn get_nonce_key(account_id: &AccountId) -> Vec<u8> {
+        [IDENTITY_ROTATION_NONCE_PREFIX, account_id.as_ref()].concat()
+    }
+
+    fn load_credentials(
+        &self,
+        state: &dyn StateAccess,
+        account_id: &AccountId,
+    ) -> Result<[Option<Credential>; 2], StateError> {
+        let key = Self::get_credentials_key(account_id);
+        let bytes = state.get(&key)?.unwrap_or_default();
+        if bytes.is_empty() {
+            return Ok([None, None]);
+        }
+        ioi_types::codec::from_bytes_canonical(&bytes)
+            .map_err(|e| StateError::InvalidValue(e.to_string()))
+    }
+
+    fn save_credentials(
+        &self,
+        state: &mut dyn StateAccess,
+        account_id: &AccountId,
+        creds: &[Option<Credential>; 2],
+    ) -> Result<(), StateError> {
+        let creds_bytes =
+            ioi_types::codec::to_bytes_canonical(creds).map_err(StateError::InvalidValue)?;
+        state.insert(&Self::get_credentials_key(account_id), &creds_bytes)
+    }
+
+    fn apply_validator_key_update(
+        &self,
+        state: &mut dyn StateAccess,
+        account_id: &AccountId,
+        new_suite: SignatureSuite,
+        new_pubkey_hash: [u8; 32],
+        promotion_height: u64,
+    ) -> Result<(), StateError> {
+        let Some(vs_blob) = state.get(VALIDATOR_SET_KEY)? else {
+            return Ok(());
+        };
+        let mut sets = read_validator_sets(&vs_blob)?;
+        let target_activation = promotion_height + 1;
+
+        if sets
+            .next
+            .as_ref()
+            .map_or(true, |n| n.effective_from_height != target_activation)
+        {
+            let mut next = sets.next.clone().unwrap_or_else(|| sets.current.clone());
+            next.effective_from_height = target_activation;
+            sets.next = Some(next);
+        }
+        let next_vs: &mut ValidatorSetV1 = sets.next.as_mut().expect("next set must exist");
+
+        if let Some(v) = next_vs
+            .validators
+            .iter_mut()
+            .find(|v| v.account_id == *account_id)
+        {
+            v.consensus_key = ActiveKeyRecord {
+                suite: new_suite,
+                public_key_hash: new_pubkey_hash,
+                since_height: target_activation,
+            };
+            log::info!(
+                "[IdentityHub] VS.next set for H={} updated: account 0x{} -> suite={:?}, since_height={}",
+                target_activation,
+                hex::encode(&account_id.as_ref()[..4]),
+                new_suite,
+                target_activation
+            );
+        } else {
+            return Ok(());
+        }
+
+        // No manual sort needed; write_validator_sets enforces sorting.
+        next_vs.total_weight = next_vs.validators.iter().map(|v| v.weight).sum();
+
+        state.insert(VALIDATOR_SET_KEY, &write_validator_sets(&sets)?)?;
+        Ok(())
+    }
+
+    fn verify_rotation_signature(
+        suite: SignatureSuite,
+        public_key: &[u8],
+        message: &[u8],
+        signature: &[u8],
+    ) -> Result<(), String> {
+        use ioi_api::crypto::{SerializableKey, VerifyingKey};
+
+        // [CHANGED] Use constants for match
+        match suite {
+            SignatureSuite::ED25519 => {
+                // [FIX] Support both Libp2p-encoded and raw Ed25519 keys
+                if let Ok(pk) = Libp2pPublicKey::try_decode_protobuf(public_key) {
+                    if pk.verify(message, signature) {
+                        return Ok(());
+                    } else {
+                        return Err("Libp2p signature verification failed".into());
+                    }
+                }
+
+                let pk = Ed25519PublicKey::from_bytes(public_key).map_err(|e| e.to_string())?;
+                let sig = ioi_crypto::sign::eddsa::Ed25519Signature::from_bytes(signature)
+                    .map_err(|e| e.to_string())?;
+                pk.verify(message, &sig).map_err(|e| e.to_string())
+            }
+            SignatureSuite::ML_DSA_44 => {
+                // [FIX] Use MldsaPublicKey and MldsaSignature
+                let pk = MldsaPublicKey::from_bytes(public_key).map_err(|e| e.to_string())?;
+                let sig = ioi_crypto::sign::dilithium::MldsaSignature::from_bytes(signature)
+                    .map_err(|e| e.to_string())?;
+                pk.verify(message, &sig).map_err(|e| e.to_string())
+            }
+            SignatureSuite::FALCON_512 => {
+                // Stub for Falcon512 support
+                Err("Falcon512 verification not yet implemented in crypto backend".to_string())
+            }
+            SignatureSuite::HYBRID_ED25519_ML_DSA_44 => {
+                // Hybrid Scheme: Ed25519 + ML-DSA-44
+                const ED_PK_LEN: usize = 32;
+                const ED_SIG_LEN: usize = 64;
+
+                if public_key.len() < ED_PK_LEN || signature.len() < ED_SIG_LEN {
+                    return Err("Hybrid key or signature too short".to_string());
+                }
+
+                let (ed_pk_bytes, pq_pk_bytes) = public_key.split_at(ED_PK_LEN);
+                let (ed_sig_bytes, pq_sig_bytes) = signature.split_at(ED_SIG_LEN);
+
+                // 1. Verify Classical (Ed25519)
+                let ed_pk = Ed25519PublicKey::from_bytes(ed_pk_bytes).map_err(|e| e.to_string())?;
+                let ed_sig = ioi_crypto::sign::eddsa::Ed25519Signature::from_bytes(ed_sig_bytes)
+                    .map_err(|e| e.to_string())?;
+                ed_pk
+                    .verify(message, &ed_sig)
+                    .map_err(|e| format!("Hybrid classical fail: {}", e))?;
+
+                // 2. Verify Post-Quantum (ML-DSA)
+                let pq_pk = MldsaPublicKey::from_bytes(pq_pk_bytes).map_err(|e| e.to_string())?;
+                let pq_sig = ioi_crypto::sign::dilithium::MldsaSignature::from_bytes(pq_sig_bytes)
+                    .map_err(|e| e.to_string())?;
+                pq_pk
+                    .verify(message, &pq_sig)
+                    .map_err(|e| format!("Hybrid PQ fail: {}", e))?;
+
+                Ok(())
+            }
+            _ => Err(format!(
+                "Unsupported or unknown signature suite ID: {}",
+                suite.0
+            )),
+        }
+    }
+
+    pub fn rotation_challenge(
+        &self,
+        state: &dyn StateAccess,
+        account_id: &AccountId,
+    ) -> Result<[u8; 32], StateError> {
+        let nonce = u64_from_le_bytes(state.get(&Self::get_nonce_key(account_id))?.as_ref());
+        let mut preimage = b"DePIN-PQ-MIGRATE/v1".to_vec();
+        preimage.extend_from_slice(&self.config.chain_id.to_le_bytes());
+        preimage.extend_from_slice(account_id.as_ref());
+        preimage.extend_from_slice(&nonce.to_le_bytes());
+        ioi_crypto::algorithms::hash::sha256(&preimage)
+            .map_err(|e| StateError::Backend(e.to_string()))?
+            .try_into()
+            .map_err(|_| StateError::InvalidValue("hash len".into()))
+    }
+
+    pub fn rotate(
+        &self,
+        state: &mut dyn StateAccess,
+        account_id: &AccountId,
+        proof: &RotationProof,
+        current_height: u64,
+    ) -> Result<(), TransactionError> {
+        if !self
+            .config
+            .allowed_target_suites
+            .contains(&proof.target_suite)
+        {
+            return Err(TransactionError::Invalid(
+                "Target suite not allowed by chain policy".to_string(),
+            ));
+        }
+        let creds = self.load_credentials(state, account_id)?;
+        let active_cred = creds[0].as_ref().ok_or(TransactionError::Invalid(
+            "No active credential to rotate from".to_string(),
+        ))?;
+        if creds[1].is_some() {
+            return Err(TransactionError::Invalid(
+                "Rotation already in progress for this account".to_string(),
+            ));
+        }
+
+        // [FIX] Correct downgrade logic.
+        // If target is PQ and active is not, it is an upgrade (ALLOWED).
+        let is_pq_upgrade =
+            proof.target_suite.is_post_quantum() && !active_cred.suite.is_post_quantum();
+
+        if !self.config.allow_downgrade && !is_pq_upgrade {
+            if proof.target_suite.0 < active_cred.suite.0 {
+                return Err(TransactionError::Invalid(
+                    "Cryptographic downgrade is forbidden by policy".to_string(),
+                ));
+            }
+        }
+
+        let challenge = self.rotation_challenge(state, account_id)?;
+        let old_pk_hash = account_id_from_key_material(active_cred.suite, &proof.old_public_key)?;
+
+        if old_pk_hash != active_cred.public_key_hash {
+            return Err(TransactionError::Invalid(
+                "old_public_key does not_match active credential".to_string(),
+            ));
+        }
+        Self::verify_rotation_signature(
+            active_cred.suite,
+            &proof.old_public_key,
+            &challenge,
+            &proof.old_signature,
+        )
+        .map_err(|e| TransactionError::Invalid(e))?;
+        Self::verify_rotation_signature(
+            proof.target_suite,
+            &proof.new_public_key,
+            &challenge,
+            &proof.new_signature,
+        )
+        .map_err(|e| TransactionError::Invalid(e))?;
+
+        let activation_height = current_height + self.config.grace_period_blocks;
+        let new_cred = Credential {
+            suite: proof.target_suite,
+            public_key_hash: account_id_from_key_material(
+                proof.target_suite,
+                &proof.new_public_key,
+            )?,
+            activation_height,
+            l2_location: proof.l2_location.clone(),
+            // [NEW] Initialize weight. For now, we default to 1 (standard account).
+            weight: 1,
+        };
+        let mut creds_mut = creds;
+        creds_mut[1] = Some(new_cred);
+        self.save_credentials(state, account_id, &creds_mut)?;
+
+        let idx_key = Self::get_index_key(activation_height);
+        let mut list: Vec<AccountId> = state
+            .get(&idx_key)?
+            .and_then(|b| codec::from_bytes_canonical(&b).ok())
+            .unwrap_or_default();
+        if !list.contains(account_id) {
+            list.push(*account_id);
+            state.insert(
+                &idx_key,
+                &codec::to_bytes_canonical(&list).map_err(TransactionError::Serialization)?,
+            )?;
+        }
+
+        let nonce_key = Self::get_nonce_key(account_id);
+        let next_nonce = u64_from_le_bytes(state.get(&nonce_key)?.as_ref()) + 1;
+        state.insert(&nonce_key, &next_nonce.to_le_bytes())?;
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl BlockchainService for IdentityHub {
+    fn id(&self) -> &str {
+        "identity_hub"
+    }
+    fn abi_version(&self) -> u32 {
+        1
+    }
+    fn state_schema(&self) -> &str {
+        "v1"
+    }
+    fn capabilities(&self) -> Capabilities {
+        Capabilities::ON_END_BLOCK
+    }
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+    fn as_on_end_block(&self) -> Option<&dyn OnEndBlock> {
+        Some(self)
+    }
+    fn as_credentials_view(&self) -> Option<&dyn CredentialsView> {
+        Some(self)
+    }
+
+    async fn handle_service_call(
+        &self,
+        state: &mut dyn StateAccess,
+        method: &str,
+        params: &[u8],
+        ctx: &mut TxContext<'_>,
+    ) -> Result<(), TransactionError> {
+        match method {
+            "rotate_key@v1" => {
+                let p: RotateKeyParams = codec::from_bytes_canonical(params)?;
+                let account_id = ctx.signer_account_id;
+                self.rotate(state, &account_id, &p.proof, ctx.block_height)
+            }
+            "register_attestation@v1" => {
+                let attestation: BootAttestation = codec::from_bytes_canonical(params)?;
+
+                // 1. Authorization Check
+                // The transaction signer MUST match the validator_account_id in the attestation.
+                if ctx.signer_account_id != attestation.validator_account_id {
+                    return Err(TransactionError::Invalid(
+                        "Signer does not match attestation validator ID".into(),
+                    ));
+                }
+
+                // 2. Signature Verification
+                // Retrieve the validator's active public key from state.
+                let creds = self
+                    .load_credentials(state, &attestation.validator_account_id)
+                    .map_err(TransactionError::State)?;
+
+                let active_cred = creds[0].as_ref().ok_or(TransactionError::Invalid(
+                    "Validator has no active credentials".into(),
+                ))?;
+
+                // Retrieve the full public key bytes
+                let pubkey_map_key = [
+                    ioi_types::keys::ACCOUNT_ID_TO_PUBKEY_PREFIX,
+                    attestation.validator_account_id.as_ref(),
+                ]
+                .concat();
+                let pubkey_bytes = state
+                    .get(&pubkey_map_key)
+                    .map_err(TransactionError::State)?
+                    .ok_or_else(|| {
+                        TransactionError::Invalid(
+                            "Validator public key not found in registry".into(),
+                        )
+                    })?;
+
+                // Verify the attestation signature using the on-chain key.
+                let sign_bytes = attestation
+                    .to_sign_bytes()
+                    .map_err(|e| TransactionError::Invalid(e.to_string()))?;
+
+                Self::verify_rotation_signature(
+                    active_cred.suite,
+                    &pubkey_bytes,
+                    &sign_bytes,
+                    &attestation.signature,
+                )
+                .map_err(|e| {
+                    TransactionError::Invalid(format!("Attestation signature invalid: {}", e))
+                })?;
+
+                // 3. Store
+                let key = [
+                    IDENTITY_ATTESTATION_PREFIX,
+                    attestation.validator_account_id.as_ref(),
+                ]
+                .concat();
+                let value = ioi_types::codec::to_bytes_canonical(&attestation)
+                    .map_err(TransactionError::Serialization)?;
+
+                state
+                    .insert(&key, &value)
+                    .map_err(TransactionError::State)?;
+
+                log::info!(
+                    "Registered binary attestation for 0x{}. Guardian Hash: {}",
+                    hex::encode(attestation.validator_account_id),
+                    hex::encode(attestation.guardian.sha256)
+                );
+
+                Ok(())
+            }
+            _ => Err(TransactionError::Unsupported(format!(
+                "IdentityHub does not support method '{}'",
+                method
+            ))),
+        }
+    }
+}
+
+#[async_trait]
+impl UpgradableService for IdentityHub {
+    async fn prepare_upgrade(&self, _new_module_wasm: &[u8]) -> Result<Vec<u8>, UpgradeError> {
+        Ok(Vec::new())
+    }
+    async fn complete_upgrade(&self, _snapshot: &[u8]) -> Result<(), UpgradeError> {
+        Ok(())
+    }
+}
+
+impl CredentialsView for IdentityHub {
+    fn get_credentials(
+        &self,
+        state: &dyn StateAccess,
+        account_id: &AccountId,
+    ) -> Result<[Option<Credential>; 2], TransactionError> {
+        self.load_credentials(state, account_id)
+            .map_err(TransactionError::State)
+    }
+
+    fn accept_staged_during_grace(&self) -> bool {
+        self.config.accept_staged_during_grace
+    }
+}
+
+#[async_trait]
+impl OnEndBlock for IdentityHub {
+    async fn on_end_block(
+        &self,
+        state: &mut dyn StateAccess,
+        ctx: &TxContext,
+    ) -> Result<(), StateError> {
+        let height = ctx.block_height;
+        let idx_key = Self::get_index_key(height);
+
+        if let Some(bytes) = state.get(&idx_key)? {
+            let accounts: Vec<AccountId> = codec::from_bytes_canonical(&bytes).unwrap_or_default();
+            for account_id in accounts {
+                let mut creds = self
+                    .load_credentials(state, &account_id)
+                    .map_err(|e| StateError::InvalidValue(e.to_string()))?;
+                if let Some(staged) = creds[1].as_ref() {
+                    if height >= staged.activation_height {
+                        if let Some(staged_taken) = creds[1].take() {
+                            let new_active = staged_taken.clone();
+                            log::info!(
+                                "[IdentityHub] Promoting account 0x{} -> {:?} at H={}",
+                                hex::encode(&account_id.as_ref()[..4]),
+                                new_active.suite,
+                                height
+                            );
+                            creds[0] = Some(new_active.clone());
+                            self.save_credentials(state, &account_id, &creds)?;
+
+                            self.apply_validator_key_update(
+                                state,
+                                &account_id,
+                                new_active.suite,
+                                new_active.public_key_hash,
+                                height,
+                            )?;
+                        }
+                    }
+                }
+            }
+            state.delete(&idx_key)?;
+        }
+        Ok(())
+    }
+}

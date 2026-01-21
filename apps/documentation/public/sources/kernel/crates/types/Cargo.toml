@@ -1,0 +1,30 @@
+# Path: crates/types/Cargo.toml
+[package]
+name = "ioi-types"
+version = "0.1.0"
+edition = "2021"
+description = "Core data structures and error types for the IOI Kernel"
+license.workspace = true
+repository = "https://github.com/ioi-foundation/ioi"
+
+[dependencies]
+# This crate has minimal dependencies to remain stable.
+serde = { workspace = true, features = ["derive", "rc"] }
+thiserror = { workspace = true }
+dcrypt = { workspace = true }
+serde_json = { workspace = true }
+libp2p = { workspace = true }
+bcs = "0.1"
+parity-scale-codec = { workspace = true }
+prost = { workspace = true }
+bitflags = { workspace = true }
+
+[dev-dependencies]
+toml = { workspace = true }
+
+[features]
+default = []
+# Experimental PQC algorithms are gated here, not in the API.
+experimental-pqc = []
+# Declare the feature so cfg attributes can use it.
+ibc-deps = []

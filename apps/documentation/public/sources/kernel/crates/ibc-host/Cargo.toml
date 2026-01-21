@@ -1,0 +1,32 @@
+# Path: crates/ibc-host/Cargo.toml
+[package]
+name = "ibc-host"
+version = "0.1.0"
+edition = "2021"
+description = "Transport-agnostic, byte-oriented IBC host trait for the IOI Kernel"
+license-file = "../../LICENSE-BBSL"
+repository = "https://github.com/ioi-foundation/ioi"
+
+[dependencies]
+ioi-api = { path = "../api" }
+ioi-types = { path = "../types" }
+ioi-client = { path = "../client" }
+ioi-networking = { path = "../networking" }
+ioi-crypto = { path = "../crypto" }
+ioi-validator = { path = "../validator" }
+ioi-state = { path = "../state" }
+
+anyhow = { workspace = true }
+async-trait = { workspace = true }
+lru = { workspace = true }
+tokio = { workspace = true, features = ["sync"] }
+hex = { workspace = true }
+serde = { workspace = true }
+parity-scale-codec = { workspace = true, features = ["std"] }
+dcrypt = { workspace = true }
+ibc-core-host-types = { workspace = true, features = ["std"] }
+ibc-proto = { workspace = true }
+ics23 = { workspace = true }
+prost = { workspace = true }
+libp2p = { workspace = true }
+tracing = { workspace = true }

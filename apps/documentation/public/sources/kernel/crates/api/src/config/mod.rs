@@ -1,0 +1,12 @@
+// Path: crates/api/src/config/mod.rs
+
+//! Shared configuration structures for core IOI Kernel components.
+
+use serde::Deserialize;
+
+/// Configuration for the Workload container (`workload.toml`).
+/// This is defined in `core` because it's part of the public `WorkloadContainer` struct.
+#[derive(Debug, Deserialize, Clone)]
+pub struct WorkloadConfig {
+    pub enabled_vms: Vec<String>,
+}

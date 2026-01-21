@@ -1,0 +1,19 @@
+// Path: crates/types/src/config/consensus.rs
+//! Configuration related to consensus engines.
+
+use serde::{Deserialize, Serialize};
+
+/// The type of consensus engine to use.
+/// This enum lives in `ioi-types` to avoid a circular dependency
+/// between the `validator` crate (which reads it from config) and the
+/// `consensus` crate (which uses it to dispatch logic).
+// --- FIX START: Add Copy trait ---
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
+// --- FIX END ---
+#[serde(rename_all = "PascalCase")]
+pub enum ConsensusType {
+    /// Proof of Stake consensus.
+    ProofOfStake,
+    /// Proof of Authority consensus.
+    Admft,
+}

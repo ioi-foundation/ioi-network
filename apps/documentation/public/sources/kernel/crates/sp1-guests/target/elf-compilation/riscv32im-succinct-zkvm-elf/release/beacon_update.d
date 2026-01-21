@@ -1,0 +1,1 @@
+/workspaces/ioi/crates/sp1-guests/target/elf-compilation/riscv32im-succinct-zkvm-elf/release/beacon_update: /workspaces/ioi/crates/sp1-guests/src/beacon_update.rs /workspaces/ioi/crates/sp1-guests/src/lib.rs /workspaces/ioi/crates/zk-types/src/lib.rs

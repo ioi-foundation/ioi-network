@@ -1,0 +1,1 @@
+/workspaces/ioi/crates/sp1-guests/target/elf-compilation/riscv32im-succinct-zkvm-elf/release/state_inclusion: /workspaces/ioi/crates/sp1-guests/src/lib.rs /workspaces/ioi/crates/sp1-guests/src/state_inclusion.rs /workspaces/ioi/crates/zk-types/src/lib.rs

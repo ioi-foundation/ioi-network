@@ -1,0 +1,9 @@
+[package]
+name = "zk-types"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+serde = { workspace = true, features = ["derive"] }
+# We need fixed-size byte arrays for zero-copy serialization
+serde_bytes = "0.11"

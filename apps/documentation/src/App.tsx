@@ -14,11 +14,13 @@ import { NavigationTab } from './core/types';
 // Shared UI imports
 import { SkeletonCard, SkeletonText, FadeIn } from '@ioi/ui';
 
-// Map repo keys to local directory paths if serving locally
+// Map repo keys to local directory paths (relative to public/)
+// These align with the folders created by scripts/sync-repos.js
 const LOCAL_REPO_MAP: Record<string, string> = {
-  kernel: 'sources',
-  swarm: 'sources', 
-  ddk: 'sources'
+  kernel: 'sources/kernel',
+  swarm: 'sources/swarm', 
+  ddk: 'sources/ddk',
+  api: 'sources/api'
 };
 
 const CodeBlock = ({ node, className, children, ...props }: any) => {
@@ -55,7 +57,8 @@ const CodeBlock = ({ node, className, children, ...props }: any) => {
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<NavigationTab>(NavigationTab.KERNEL);
-  const [activeDocId, setActiveDocId] = useState<string>('kernel/consensus/admft');
+  // Default to the intro page synced from the root README
+  const [activeDocId, setActiveDocId] = useState<string>('intro');
   
   // Content State
   const [markdown, setMarkdown] = useState('');
@@ -80,6 +83,7 @@ export default function App() {
       
       try {
         // Fetch Markdown
+        // Matches the structure created by sync script: public/docs/{id}.md
         const docRes = await fetch(`/docs/${activeDoc.id}.md`);
         let docText = '';
         
@@ -93,16 +97,18 @@ export default function App() {
         // Fetch Source Code (if mapped)
         let srcText = '';
         if (activeDoc.source) {
-          // Try local sources folder first
-          const localPath = `/${LOCAL_REPO_MAP[activeDoc.source.repo]}/${activeDoc.source.path}`;
-          try {
-            const srcRes = await fetch(localPath);
-            if (srcRes.ok) {
-              srcText = await srcRes.text();
-              setSourceCode(srcText);
+          const mapPrefix = LOCAL_REPO_MAP[activeDoc.source.repo];
+          if (mapPrefix) {
+            const localPath = `/${mapPrefix}/${activeDoc.source.path}`;
+            try {
+              const srcRes = await fetch(localPath);
+              if (srcRes.ok) {
+                srcText = await srcRes.text();
+                setSourceCode(srcText);
+              }
+            } catch (e) {
+              console.warn("Failed to fetch local source:", e);
             }
-          } catch (e) {
-            console.warn("Failed to fetch local source:", e);
           }
         } else {
           setSourceCode('');
@@ -141,10 +147,13 @@ export default function App() {
       
       for (const doc of docsToCheck) {
         if (!doc.source) continue;
+        const mapPrefix = LOCAL_REPO_MAP[doc.source.repo];
+        if (!mapPrefix) continue;
+
         try {
           const [mdRes, srcRes] = await Promise.all([
             fetch(`/docs/${doc.id}.md`),
-            fetch(`/${LOCAL_REPO_MAP[doc.source.repo]}/${doc.source.path}`)
+            fetch(`/${mapPrefix}/${doc.source.path}`)
           ]);
           
           if (mdRes.ok && srcRes.ok) {

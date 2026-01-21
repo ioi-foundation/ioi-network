@@ -1,0 +1,17 @@
+[package]
+name = "identity-service-contract"
+version = "0.1.0"
+edition = "2021"
+description = "On-chain WASM component for the IOI Kernel Identity service"
+license-file = "../../../../LICENSE-BBSL"
+repository = "https://github.com/ioi-foundation/ioi"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+ioi-contract-sdk = { path = "../../../../contract-sdk" }
+# DO NOT inherit from workspace. Specify version and features directly for no_std compatibility.
+parity-scale-codec = { version = "3.7.5", default-features = false, features = [
+    "derive",
+] }
