@@ -4,7 +4,7 @@
 # Default settings
 LINE_THRESHOLD=1800
 OUTPUT_FILE="codebase_snapshot.md"
-LARGE_DIRS=("pqclean" "node_modules" ".git" "target" "build" "dist" "vectors" "node_modules")
+LARGE_DIRS=("pqclean" "node_modules" ".git" "target" "build" "dist" "vectors" "node_modules" "sources" "docs")
 IGNORED_EXTS=("jpg" "jpeg" "png" "gif" "mp4" "mov" "zip" "tar" "gz" "class" "o" "so" "dylib" "a" "exe" "dll")
 
 function print_usage() {

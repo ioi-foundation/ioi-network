@@ -8,7 +8,7 @@ export enum NavigationTab {
 }
 
 export interface SourceConfig {
-  repo: 'kernel' | 'swarm' | 'ddk';
+  repo: 'kernel' | 'swarm' | 'ddk' | 'api';
   path: string;
   branch?: string;
 }

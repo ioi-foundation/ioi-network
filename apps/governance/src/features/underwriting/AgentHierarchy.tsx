@@ -1,5 +1,5 @@
 import React from 'react';
-import { Agent } from '../../../core/types';
+import { Agent } from '../../core/types';
 
 interface AgentSwarmViewProps {
   rootAgent: Agent;

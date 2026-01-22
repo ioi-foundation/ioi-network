@@ -1,3 +1,4 @@
+// File: apps/documentation/scripts/sync-repos.js
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -5,7 +6,7 @@ import { execSync } from 'child_process';
 
 // --- CONFIGURATION ---
 const CORE_REPO = {
-  // apps/doc/scripts (start) -> apps/doc (1) -> apps (2) -> monorepo (3) -> parent (4) -> ioi
+  // apps/documentation/scripts (start) -> apps/documentation (1) -> apps (2) -> root (3) -> parent (4) -> ioi
   localPath: '../../../../ioi', 
   remoteUrl: 'https://github.com/ioi-foundation/ioi.git',
   branch: 'main'
@@ -25,7 +26,6 @@ const ensureDir = (dir) => {
 };
 
 // 1. Recursive Copy (For Source Code)
-// Copies EVERYTHING (files and folders) from src to dest
 const copyRecursive = (src, dest) => {
   if (!fs.existsSync(src)) return;
   const stats = fs.statSync(src);
@@ -38,8 +38,6 @@ const copyRecursive = (src, dest) => {
 };
 
 // 2. Deep Markdown Scanner (For Documentation)
-// Walks the source directory, finds ONLY .md files, and copies them to dest
-// while preserving the original folder structure.
 const copyMarkdownRecursive = (src, destRoot, relativePath = '') => {
   const currentSrc = path.join(src, relativePath);
   const currentDest = path.join(destRoot, relativePath);
@@ -53,14 +51,10 @@ const copyMarkdownRecursive = (src, destRoot, relativePath = '') => {
     const stats = fs.statSync(srcItemPath);
 
     if (stats.isDirectory()) {
-      // Recurse into subdirectories
       copyMarkdownRecursive(src, destRoot, path.join(relativePath, item));
     } else if (item.endsWith('.md')) {
-      // It's a Markdown file! Copy it.
       ensureDir(currentDest);
       fs.copyFileSync(srcItemPath, path.join(currentDest, item));
-      // Optional: Log found docs
-      // console.log(`     + found doc: ${path.join(relativePath, item)}`);
     }
   });
 };
@@ -70,7 +64,6 @@ const copyMarkdownRecursive = (src, destRoot, relativePath = '') => {
 console.log(`🚀 Starting Sync from IOI Core (${IS_CI ? 'Remote' : 'Local'})...`);
 
 // 1. ACQUIRE SOURCE
-// Use local sibling folder for dev speed, or clone from GitHub for CI
 let sourcePath = path.resolve(__dirname, CORE_REPO.localPath);
 
 if (IS_CI || !fs.existsSync(sourcePath)) {
@@ -95,7 +88,7 @@ if (IS_CI || !fs.existsSync(sourcePath)) {
 const SOURCE_MAPPINGS = [
   { src: 'crates', dest: 'sources/kernel/crates' },
   { src: 'ioi-swarm/python/src', dest: 'sources/swarm/src' },
-  { src: 'crates/ipc/proto', dest: 'sources/api/proto' }
+  { src: 'crates/ipc/proto', dest: 'sources/api' }
 ];
 
 console.log(`   Syncing Raw Sources...`);
@@ -103,14 +96,12 @@ SOURCE_MAPPINGS.forEach(map => {
   const src = path.join(sourcePath, map.src);
   const dest = path.join(PUBLIC_DIR, map.dest);
   
-  // Clean previous sync to remove deleted files
   if (fs.existsSync(dest)) fs.rmSync(dest, { recursive: true, force: true });
   
   copyRecursive(src, dest);
 });
 
 // 3. SYNC ARCHITECTURE DOCS
-// Copies the root /docs folder from the repo (e.g. security/, crypto/ specs)
 console.log(`   Syncing Architecture Docs...`);
 const docsSrc = path.join(sourcePath, 'docs');
 const docsDest = path.join(PUBLIC_DIR, 'docs/kernel'); 
@@ -119,7 +110,6 @@ if (fs.existsSync(docsDest)) fs.rmSync(docsDest, { recursive: true, force: true 
 copyRecursive(docsSrc, docsDest);
 
 // 4. DEEP SCAN CRATE READMEs
-// Walks through crates/** and submodules to find any README.md
 console.log(`   Deep Scanning Crate Docs...`);
 const cratesSrc = path.join(sourcePath, 'crates');
 const cratesDest = path.join(PUBLIC_DIR, 'docs/crates');
@@ -128,20 +118,51 @@ if (fs.existsSync(cratesDest)) fs.rmSync(cratesDest, { recursive: true, force: t
 copyMarkdownRecursive(cratesSrc, cratesDest);
 
 // 5. SYNC SPECIAL READMEs
-// Maps specific high-level READMEs to specific locations in the doc site
+// Maps specific source files to the paths expected by the frontend's sidebar constants.
 const SPECIALS = [
-  // The Python SDK README becomes the Swarm Overview
+  // --- SWARM SDK ---
   { src: 'ioi-swarm/python/README.md', dest: 'docs/swarm/overview.md' },
-  // The Root Repo README becomes the Site Intro
-  { src: 'README.md', dest: 'docs/intro.md' }
+  { src: 'ioi-swarm/python/src/ioi_swarm/agent/README.md', dest: 'docs/sdk/agents.md' },
+  { src: 'ioi-swarm/python/src/ioi_swarm/tools/README.md', dest: 'docs/sdk/tools.md' },
+  { src: 'ioi-swarm/python/src/ioi_swarm/client/README.md', dest: 'docs/sdk/client.md' },
+  { src: 'ioi-swarm/python/src/ioi_swarm/types/README.md', dest: 'docs/sdk/types.md' },
+  { src: 'ioi-swarm/python/src/ioi_swarm/ghost/README.md', dest: 'docs/sdk/ghost.md' },
+
+  // --- KERNEL ---
+  { src: 'README.md', dest: 'docs/intro.md' },
+  
+  // --- DRIVER KIT (DDK) ---
+  { src: 'crates/drivers/README.md', dest: 'docs/ddk/overview.md' },
+  
+  // Specific Drivers
+  { src: 'crates/drivers/src/mcp/README.md', dest: 'docs/ddk/drivers/mcp.md' },
+  { src: 'crates/drivers/src/ucp/README.md', dest: 'docs/ddk/drivers/ucp.md' }, 
+  { src: 'crates/drivers/src/gui/README.md', dest: 'docs/ddk/drivers/gui.md' },
+  { src: 'crates/drivers/src/browser/README.md', dest: 'docs/ddk/drivers/browser.md' },
+  { src: 'crates/drivers/src/terminal/README.md', dest: 'docs/ddk/drivers/terminal.md' },
+  { src: 'crates/drivers/src/os/README.md', dest: 'docs/ddk/drivers/os.md' },
+  
+  // Interop / IBC
+  { src: 'crates/services/src/ibc/light_clients/README.md', dest: 'docs/ddk/ibc/light-clients.md' },
+  { src: 'crates/zk-driver-succinct/README.md', dest: 'docs/ddk/ibc/zk-relay.md' },
+  
+  // --- API REFERENCE ---
+  { src: 'crates/ipc/proto/blockchain/README.md', dest: 'docs/api/blockchain.md' },
+  { src: 'crates/ipc/proto/control/README.md', dest: 'docs/api/control.md' },
+  { src: 'crates/ipc/proto/public/README.md', dest: 'docs/api/public.md' }
 ];
 
+console.log(`   Syncing Special Docs...`);
 SPECIALS.forEach(item => {
   const src = path.join(sourcePath, item.src);
   const dest = path.join(PUBLIC_DIR, item.dest);
+  
   if (fs.existsSync(src)) {
     ensureDir(path.dirname(dest));
     fs.copyFileSync(src, dest);
+  } else {
+    // Non-fatal warning allows the script to run even if some docs are missing during dev
+    console.warn(`⚠️  Warning: Special doc source not found: ${item.src}`);
   }
 });
 
