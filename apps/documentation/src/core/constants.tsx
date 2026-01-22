@@ -10,6 +10,8 @@ import {
   Globe, 
   Fingerprint,
   Zap,
+  Box,
+  Lock
 } from 'lucide-react';
 import { NavigationTab, SidebarSection, SourceConfig } from './types';
 
@@ -27,12 +29,11 @@ export const SIDEBAR_DATA: Record<NavigationTab, SidebarSection> = {
     color: 'text-blue-400',
     icon: <Code2 className="w-4 h-4" />,
     items: [
-      // Mapped from: ioi-swarm/python/README.md
       { 
         id: 'swarm/overview', 
         label: 'Overview', 
         type: 'doc', 
-        source: src('swarm', 'ioi_swarm/__init__.py'), // Checks doc against actual Python init
+        source: src('swarm', 'ioi_swarm/__init__.py'), 
         description: 'Entry point for the IOI Swarm SDK.' 
       },
       {
@@ -66,69 +67,165 @@ export const SIDEBAR_DATA: Record<NavigationTab, SidebarSection> = {
     color: 'text-orange-400',
     icon: <Cpu className="w-4 h-4" />,
     items: [
-      // Mapped from: ioi/README.md
       { 
         id: 'intro', 
         label: 'Introduction', 
         type: 'doc', 
-        source: src('kernel', 'README.md'), // Self-reference check
+        source: src('kernel', 'README.md'), 
         description: 'The AI DePIN Layer.' 
       },
       
-      // 1. Architecture Specs (Mapped from ioi/docs/*)
+      // 1. The Triadic Kernel (Runtime & Isolation)
       {
-        id: 'specs',
-        label: 'Protocol Specifications',
+        id: 'triadic-kernel',
+        label: 'The Triadic Kernel',
         type: 'category',
         items: [
-          // Mapped from: ioi/docs/security/post_quantum.md
           { 
-            id: 'kernel/security/post_quantum', 
-            label: 'Post-Quantum Security', 
+            id: 'crates/validator/README', 
+            label: 'Container Architecture', 
             type: 'doc', 
-            source: src('kernel', 'crates/crypto/src/lib.rs') // Validate against crypto crate
+            source: src('kernel', 'crates/validator/src/lib.rs') 
           },
-          // Mapped from: ioi/docs/crypto/Dilithium.md
           { 
-            id: 'kernel/crypto/Dilithium', 
-            label: 'Cryptography: Dilithium', 
+            id: 'crates/validator/src/standard/orchestration/README', 
+            label: 'Orchestration (Control)', 
+            type: 'doc', 
+            source: src('kernel', 'crates/validator/src/standard/orchestration/mod.rs') 
+          },
+          { 
+            id: 'crates/validator/src/standard/workload/README', 
+            label: 'Workload (Sandbox)', 
+            type: 'doc', 
+            source: src('kernel', 'crates/validator/src/standard/workload/mod.rs') 
+          },
+          { 
+            id: 'crates/validator/src/common/README', 
+            label: 'Guardian (Root of Trust)', 
+            type: 'doc', 
+            source: src('kernel', 'crates/validator/src/common/guardian.rs') 
+          },
+          { 
+            id: 'crates/ipc/README', 
+            label: 'Hybrid IPC (gRPC/Shm)', 
+            type: 'doc', 
+            source: src('kernel', 'crates/ipc/src/lib.rs') 
+          },
+        ]
+      },
+
+      // 2. Agentic Capabilities (Web4 Layer)
+      {
+        id: 'agentic-layer',
+        label: 'Agentic Capabilities',
+        type: 'category',
+        items: [
+          { 
+            id: 'crates/services/src/agentic/README', 
+            label: 'Agentic Service', 
+            type: 'doc', 
+            source: src('kernel', 'crates/services/src/agentic/mod.rs') 
+          },
+          { 
+            id: 'crates/services/src/agentic/policy/README', 
+            label: 'Agency Firewall', 
+            type: 'doc', 
+            source: src('kernel', 'crates/services/src/agentic/policy.rs') 
+          },
+          { 
+            id: 'crates/services/src/agentic/scrubber/README', 
+            label: 'PII Scrubber', 
+            type: 'doc', 
+            source: src('kernel', 'crates/services/src/agentic/scrubber.rs') 
+          },
+          { 
+            id: 'crates/scs/README', 
+            label: 'Sovereign Context (SCS)', 
+            type: 'doc', 
+            source: src('kernel', 'crates/scs/src/lib.rs') 
+          },
+          { 
+            id: 'crates/state/src/tree/mhnsw/README', 
+            label: 'Vector Index (mHNSW)', 
+            type: 'doc', 
+            source: src('kernel', 'crates/state/src/tree/mhnsw/mod.rs') 
+          },
+        ]
+      },
+
+      // 3. Hardware Drivers
+      {
+        id: 'drivers',
+        label: 'Hardware Drivers',
+        type: 'category',
+        items: [
+           { 
+             id: 'crates/drivers/src/mcp/README', 
+             label: 'Model Context Protocol', 
+             type: 'doc', 
+             source: src('kernel', 'crates/drivers/src/mcp/mod.rs') 
+           },
+           { 
+             id: 'crates/drivers/src/gui/README', 
+             label: 'GUI / Accessibility', 
+             type: 'doc', 
+             source: src('kernel', 'crates/drivers/src/gui/mod.rs') 
+           },
+        ]
+      },
+
+      // 4. Consensus & State
+      {
+        id: 'consensus-state',
+        label: 'Consensus & State',
+        type: 'category',
+        items: [
+          { 
+            id: 'crates/consensus/src/admft/README', 
+            label: 'A-DMFT Consensus', 
+            type: 'doc', 
+            source: src('kernel', 'crates/consensus/src/admft.rs') 
+          },
+          { 
+            id: 'crates/execution/README', 
+            label: 'Parallel Execution (STM)', 
+            type: 'doc', 
+            source: src('kernel', 'crates/execution/src/mv_memory.rs') 
+          },
+          { 
+            id: 'crates/state/src/tree/jellyfish/README', 
+            label: 'Jellyfish Merkle Tree', 
+            type: 'doc', 
+            source: src('kernel', 'crates/state/src/tree/jellyfish/mod.rs') 
+          },
+          { 
+            id: 'crates/storage/README', 
+            label: 'Storage & WAL', 
+            type: 'doc', 
+            source: src('kernel', 'crates/storage/src/wal.rs') 
+          },
+        ]
+      },
+
+      // 5. Cryptography
+      {
+        id: 'cryptography',
+        label: 'Cryptography',
+        type: 'category',
+        items: [
+          { 
+            id: 'crates/crypto/src/transport/hybrid_kem_tls/README', 
+            label: 'Hybrid Post-Quantum TLS', 
+            type: 'doc', 
+            source: src('kernel', 'crates/crypto/src/transport/hybrid_kem_tls/mod.rs') 
+          },
+          { 
+            id: 'crates/crypto/src/sign/dilithium/README', 
+            label: 'Dilithium Signatures', 
             type: 'doc', 
             source: src('kernel', 'crates/crypto/src/sign/dilithium/mod.rs') 
           },
-          // Mapped from: ioi/docs/commitment/README.md
-          {
-            id: 'kernel/commitment/README',
-            label: 'State Commitment',
-            type: 'doc',
-            source: src('kernel', 'crates/api/src/commitment/mod.rs')
-          }
         ]
-      },
-
-      // 2. Crates Reference (Mapped from ioi/crates/*/README.md)
-      // These IDs correspond to the folder structure created by sync-repos.js
-      {
-        id: 'crates-ref',
-        label: 'Crates Reference',
-        type: 'category',
-        items: [
-           { id: 'crates/consensus/overview', label: 'Consensus (A-DMFT)', type: 'doc', source: src('kernel', 'crates/consensus/src/lib.rs') },
-           { id: 'crates/execution/overview', label: 'Execution (Block-STM)', type: 'doc', source: src('kernel', 'crates/execution/src/lib.rs') },
-           { id: 'crates/scs/overview', label: 'Storage (SCS)', type: 'doc', source: src('kernel', 'crates/scs/src/lib.rs') },
-           { id: 'crates/networking/overview', label: 'Networking (LibP2P)', type: 'doc', source: src('kernel', 'crates/networking/src/lib.rs') },
-           { id: 'crates/drivers/overview', label: 'Drivers (MCP)', type: 'doc', source: src('kernel', 'crates/drivers/src/lib.rs') },
-        ]
-      },
-
-      // 3. Specific Deep Dives (Manual curation)
-      {
-        id: 'firewall',
-        label: 'Agency Firewall',
-        type: 'category',
-        items: [
-          { id: 'kernel/firewall/rules', label: 'Action Rules', type: 'doc', source: src('kernel', 'crates/services/src/agentic/rules.rs') },
-          { id: 'kernel/firewall/scrubber', label: 'Scrubber', type: 'doc', source: src('kernel', 'crates/services/src/agentic/scrubber.rs') },
-        ],
       },
     ],
   },
@@ -158,7 +255,7 @@ export const SIDEBAR_DATA: Record<NavigationTab, SidebarSection> = {
         label: 'IBC & Interop',
         type: 'category',
         items: [
-          { id: 'ddk/ibc/light-clients', label: 'Light Clients', type: 'doc', source: src('kernel', 'crates/services/ibc/light_clients/mod.rs') },
+          { id: 'ddk/ibc/light-clients', label: 'Light Clients', type: 'doc', source: src('kernel', 'crates/services/src/ibc/light_clients/mod.rs') },
           { id: 'ddk/ibc/zk-relay', label: 'ZK Relay', type: 'doc', source: src('kernel', 'crates/api/src/ibc/zk.rs') },
         ],
       },
@@ -185,21 +282,21 @@ export const MAPPING_CARDS = [
   {
     title: "Parallel Engine",
     concept: "Block-STM",
-    path: "crates/execution/src/app/",
+    path: "crates/execution/src/mv_memory.rs",
     icon: <Zap className="text-yellow-400" />,
     color: "yellow"
   },
   {
     title: "Agency Firewall",
     concept: "Policy Engine",
-    path: "crates/services/src/agentic/",
+    path: "crates/services/src/agentic/policy.rs",
     icon: <Shield className="text-red-400" />,
     color: "red"
   },
   {
     title: "Sovereign Context",
     concept: "Verifiable SCS",
-    path: "crates/scs/src/store.rs",
+    path: "crates/scs/src/lib.rs",
     icon: <Database className="text-emerald-400" />,
     color: "emerald"
   },
@@ -213,7 +310,7 @@ export const MAPPING_CARDS = [
   {
     title: "Identity Hub",
     concept: "PQC / Rotation",
-    path: "crates/services/src/identity/",
+    path: "crates/services/src/identity/mod.rs",
     icon: <Fingerprint className="text-pink-400" />,
     color: "pink"
   }
