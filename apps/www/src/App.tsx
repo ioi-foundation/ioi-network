@@ -125,7 +125,7 @@ export default function RootApp() {
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 font-sans selection:bg-cyan-500/20">
       {/* Shared Network Header */}
-      <NetworkHeader currentAppId="www" />
+      <NetworkHeader currentAppId="hub" />
 
       {/* Background Effects */}
       <div className="fixed inset-0 bg-[linear-gradient(rgba(255,255,255,0.02)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.02)_1px,transparent_1px)] bg-[size:24px_24px] pointer-events-none" />
