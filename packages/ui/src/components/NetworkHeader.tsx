@@ -1,6 +1,6 @@
 import React from 'react';
 import { IOI_APPS, getAppUrl, NetworkAppId } from '../config';
-import { Cpu } from 'lucide-react';
+import { ArrowRight, Cpu } from 'lucide-react';
 // IOI Logo Component (Inlined for shared package portability)
 const IOILogo = ({ className = "w-4 h-4" }: { className?: string }) => (
   <svg viewBox="0 0 24 24" className={className} fill="currentColor">
@@ -16,15 +16,25 @@ export interface NetworkHeaderProps {
 export const NetworkHeader = ({ currentAppId, className = '' }: NetworkHeaderProps) => {
   return (
     <div className="w-screen bg-black">
-      <div className="w-full max-w-full sm:max-w-full md:max-w-6xl lg:max-w-7xl xl:max-w-[1536px] 2xl:max-w-[1760px] mx-auto px-4 sm:px-6 md:px-8 lg:px-12 xl:px-16">
-        <nav>
-          <div className="flex items-center gap-1.5">
-            <Cpu className="w-4 h-4 text-white" />
-            <span className="text-sm font-bold text-zinc-300 tracking-tight">
-              Mainnet
-            </span>
+      <div className="w-full max-w-full sm:max-w-full md:max-w-6xl lg:max-w-7xl xl:max-w-[1536px] 2xl:max-w-[1760px] mx-auto px-4 sm:px-6 md:px-8 lg:px-12 xl:px-16 py-2">
+        {/* header banner */}
+        <nav className='flex justify-between items-center'>
+          <div className='flex items-center gap-2.5'>
+            <div className="flex items-center gap-1.5">
+              <Cpu className="w-4 h-4 text-white" />
+              <span className="text-xs font-medium text-white leading-3 tracking-tighter font-sans">
+                Mainnet:
+              </span>
+            </div>
+            <div className="flex items-center justify-center bg-[#0D2236] text-[#0075FF] text-[11px] font-medium px-1.5 py-0.5 rounded-[4px] font-sans">
+              Operational
+            </div>
           </div>
-
+          <p className='font-sans font-medium text-xs text-white/80'>Mainnet Beta v2.4.0 is Live •  Kernel updates, faster finality, and improved agent underwriting.</p>
+          <div className="flex items-center gap-1 cursor-pointer">
+            <p className='text-xs font-sans text-white/80 font-medium'>Release notes</p>
+            <ArrowRight className="text-white/80 w-3.5 h-3.5" />
+          </div>
         </nav>
         <nav className={`h-9 border-b border-zinc-800 flex items-center justify-between px-4 z-[60] w-full ${className}`}>
           {/* Left: Network Logo & App Switcher */}
