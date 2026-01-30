@@ -71,7 +71,7 @@ export const NetworkHeader = ({ currentAppId, className = '' }: NetworkHeaderPro
     <div className="w-screen bg-black">
       {/* header banner */}
       <div className="w-full max-w-full sm:max-w-full md:max-w-6xl lg:max-w-7xl xl:max-w-[1536px] 2xl:max-w-[1760px] mx-auto px-4 sm:px-6 md:px-8 lg:px-12 xl:px-16">
-        <nav className='flex justify-between items-center my-2'>
+        <nav className='flex justify-between items-center py-2'>
           <div className='flex items-center gap-2.5'>
             <div className="flex items-center gap-1.5">
               <Cpu className="w-4 h-4 text-white" />

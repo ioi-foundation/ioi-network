@@ -13,47 +13,6 @@ import { MainNetStatus } from './components/MainNetStatus';
 import { Hero } from './components/Hero';
 // --- Local Components ---
 
-// const Hero = () => (
-//   <div className="relative pt-32 pb-20 px-6">
-//     <div className="max-w-4xl mx-auto text-center">
-//       <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-950/30 border border-cyan-900/50 text-cyan-400 text-xs font-mono mb-8 animate-in fade-in slide-in-from-bottom-2 duration-700">
-//         <span className="relative flex h-2 w-2">
-//           <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
-//           <span className="relative inline-flex rounded-full h-2 w-2 bg-cyan-500"></span>
-//         </span>
-//         Mainnet Beta v2.4.0 is Live
-//       </div>
-
-//       <h1 className="text-5xl md:text-7xl font-bold tracking-tight text-white mb-6 animate-in fade-in slide-in-from-bottom-4 duration-700 delay-100">
-//         The Infrastructure for <br />
-//         <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-blue-600">
-//           Autonomous Agents
-//         </span>
-//       </h1>
-
-//       <p className="text-lg md:text-xl text-zinc-400 max-w-2xl mx-auto mb-10 leading-relaxed animate-in fade-in slide-in-from-bottom-4 duration-700 delay-200">
-//         IOI Network is a decentralized physical infrastructure network (DePIN) optimized for
-//         AI workloads. Deploy sovereign agents, underwrite computation, and govern the kernel.
-//       </p>
-
-//       <div className="flex flex-col sm:flex-row items-center justify-center gap-4 animate-in fade-in slide-in-from-bottom-4 duration-700 delay-300">
-//         <a
-//           href={getAppUrl(IOI_APPS.find(a => a.id === 'hub')!)}
-//           className="px-8 py-3 bg-white text-zinc-950 font-semibold rounded-lg hover:bg-zinc-200 transition-colors w-full sm:w-auto"
-//         >
-//           Launch Hub
-//         </a>
-//         <a
-//           href={getAppUrl(IOI_APPS.find(a => a.id === 'docs')!)}
-//           className="px-8 py-3 bg-zinc-900 text-white font-medium border border-zinc-800 rounded-lg hover:bg-zinc-800 transition-colors w-full sm:w-auto"
-//         >
-//           Read Documentation
-//         </a>
-//       </div>
-//     </div>
-//   </div>
-// );
-
 const AppCard = ({ app }: { app: typeof IOI_APPS[0] }) => {
   const Icon = app.icon;
   const isCurrent = app.id === 'www';
@@ -127,8 +86,8 @@ export default function RootApp() {
   return (
     <div className='min-h-screen bg-black'>
       <NetworkHeader currentAppId="hub" />
-        <MainNetStatus />
-        <Hero/>
+      <MainNetStatus />
+      <Hero />
     </div>
   );
 }
