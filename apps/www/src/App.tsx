@@ -12,6 +12,7 @@ import {
 import { MainNetStatus } from './components/MainNetStatus';
 import { Hero } from './components/Hero';
 import { StatTicker } from './components/StatTicker';
+import { Explore } from './components/Explore';
 // --- Local Components ---
 
 const AppCard = ({ app }: { app: typeof IOI_APPS[0] }) => {
@@ -56,8 +57,39 @@ export default function RootApp() {
       <MainNetStatus />
       <Hero />
       <div className="bg-black w-full max-w-full md:max-w-5xl lg:max-w-6xl xl:max-w-7xl 2xl:max-w-[1600px] mx-auto px-3 sm:px-6 md:px-8 lg:px-12 xl:px-16 relative z-10">
-        <StatTicker />
+        <FadeIn delay={100}>
+          <StatTicker />
+        </FadeIn>
+        <FadeIn delay={200}>
+          <Explore />
+        </FadeIn>
       </div>
+      {/* <main className="relative z-10 max-w-6xl mx-auto px-6">
+          
+
+          <div className="mb-10">
+            <h2 className="text-sm font-bold text-zinc-500 uppercase tracking-wider mb-6">Network Subsystems</h2>
+            <Stagger className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" staggerMs={100}>
+              {IOI_APPS.map(app => (
+                <AppCard key={app.id} app={app} />
+              ))}
+            </Stagger>
+          </div>
+
+          <footer className="mt-24 pt-8 pb-12 border-t border-zinc-900 flex flex-col md:flex-row items-center justify-between text-xs text-zinc-600 font-mono">
+            <div className="flex items-center gap-2 mb-4 md:mb-0">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              <span>All Systems Operational</span>
+            </div>
+            <div className="flex gap-6">
+              <a href="#" className="hover:text-zinc-400 transition-colors">Privacy</a>
+              <a href="#" className="hover:text-zinc-400 transition-colors">Terms</a>
+              <a href="#" className="hover:text-zinc-400 transition-colors">Status</a>
+              <span>&copy; 2026 IOI Foundation</span>
+            </div>
+          </footer>
+        </main> */}
     </div>
+
   );
 }

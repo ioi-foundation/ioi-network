@@ -64,38 +64,9 @@ export const Hero = () => {
               />
             );
           })}
-          {/* Background video (muted, loop, autoplay for hero) */}
           
         </div>
-        {/* <main className="relative z-10 max-w-6xl mx-auto px-6">
-          <Hero />
-
-          <FadeIn delay={400}>
-            <StatTicker />
-          </FadeIn>
-
-          <div className="mb-10">
-            <h2 className="text-sm font-bold text-zinc-500 uppercase tracking-wider mb-6">Network Subsystems</h2>
-            <Stagger className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" staggerMs={100}>
-              {IOI_APPS.map(app => (
-                <AppCard key={app.id} app={app} />
-              ))}
-            </Stagger>
-          </div>
-
-          <footer className="mt-24 pt-8 pb-12 border-t border-zinc-900 flex flex-col md:flex-row items-center justify-between text-xs text-zinc-600 font-mono">
-            <div className="flex items-center gap-2 mb-4 md:mb-0">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span>All Systems Operational</span>
-            </div>
-            <div className="flex gap-6">
-              <a href="#" className="hover:text-zinc-400 transition-colors">Privacy</a>
-              <a href="#" className="hover:text-zinc-400 transition-colors">Terms</a>
-              <a href="#" className="hover:text-zinc-400 transition-colors">Status</a>
-              <span>&copy; 2026 IOI Foundation</span>
-            </div>
-          </footer>
-        </main> */}
+        
       </div>
       <video
             src={heroVideo}
