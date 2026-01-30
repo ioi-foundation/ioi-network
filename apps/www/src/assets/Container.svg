@@ -1,0 +1,25 @@
+<svg width="443" height="126" viewBox="0 0 443 126" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g clip-path="url(#clip0_2055_36)">
+<rect x="1" y="-23" width="440.5" height="30" rx="15" stroke="#0075FF" stroke-width="2"/>
+<rect y="28" width="221.25" height="2" fill="white"/>
+<rect y="50" width="442.5" height="2" fill="#0075FF"/>
+<rect y="72" width="221.25" height="2" fill="white"/>
+<rect y="94" width="442.5" height="2" fill="#0075FF"/>
+<rect y="116" width="221.25" height="2" fill="white"/>
+<rect width="82" height="126" fill="url(#paint0_linear_2055_36)"/>
+<rect x="442.5" y="126" width="82" height="126" transform="rotate(-180 442.5 126)" fill="url(#paint1_linear_2055_36)"/>
+</g>
+<defs>
+<linearGradient id="paint0_linear_2055_36" x1="82" y1="63" x2="0" y2="63" gradientUnits="userSpaceOnUse">
+<stop stop-opacity="0"/>
+<stop offset="1"/>
+</linearGradient>
+<linearGradient id="paint1_linear_2055_36" x1="524.5" y1="189" x2="442.5" y2="189" gradientUnits="userSpaceOnUse">
+<stop stop-opacity="0"/>
+<stop offset="1"/>
+</linearGradient>
+<clipPath id="clip0_2055_36">
+<rect width="442.5" height="126" fill="white"/>
+</clipPath>
+</defs>
+</svg>

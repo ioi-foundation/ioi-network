@@ -1,0 +1,23 @@
+<svg width="315" height="145" viewBox="0 0 315 145" fill="none" xmlns="http://www.w3.org/2000/svg">
+<foreignObject x="-64" y="-64" width="466" height="308"><div xmlns="http://www.w3.org/1999/xhtml" style="backdrop-filter:blur(32px);clip-path:url(#bgblur_1_2102_31859_clip_path);height:100%;width:100%"></div></foreignObject><g data-figma-bg-blur-radius="64">
+<g clip-path="url(#clip0_2102_31859)">
+<rect x="1" y="1" width="336" height="178" rx="12" fill="black"/>
+<rect x="13" y="13" width="8" height="8" rx="4" fill="#E5484D"/>
+<rect x="27" y="13" width="8" height="8" rx="4" fill="#0091FF"/>
+<rect x="41" y="13" width="8" height="8" rx="4" fill="#0C9784"/>
+<rect x="213" y="13" width="32" height="8" rx="4" fill="#1F1F1F"/>
+<rect x="251" y="13" width="26" height="8" rx="4" fill="#1F1F1F"/>
+<rect x="283" y="13" width="42" height="8" rx="4" fill="#1F1F1F"/>
+<rect x="13" y="37" width="130.33" height="92" rx="4" fill="#0A0A0A"/>
+<rect x="155.33" y="37" width="213.67" height="92" rx="4" fill="#0A0A0A"/>
+<rect x="13" y="141" width="312" height="92" rx="4" fill="#0A0A0A"/>
+</g>
+<rect x="0.5" y="0.5" width="337" height="179" rx="12.5" stroke="white" stroke-opacity="0.14"/>
+</g>
+<defs>
+<clipPath id="bgblur_1_2102_31859_clip_path" transform="translate(64 64)"><rect x="1" y="1" width="336" height="178" rx="12"/>
+</clipPath><clipPath id="clip0_2102_31859">
+<rect x="1" y="1" width="336" height="178" rx="12" fill="white"/>
+</clipPath>
+</defs>
+</svg>

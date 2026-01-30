@@ -1,10 +1,10 @@
 import React from 'react';
 import { 
   LayoutGrid, 
-  Scale, 
-  BookOpen, 
-  Terminal, 
-  ShieldCheck, 
+  Landmark, 
+  BookMinus, 
+  TerminalSquare, 
+  Brain, 
   Globe 
 } from 'lucide-react';
 
@@ -44,7 +44,7 @@ export const IOI_APPS: NetworkApp[] = [
     name: 'Governance',
     url: 'https://gov.ioi.network',
     devUrl: 'http://localhost:3001',
-    icon: Scale,
+    icon: Landmark,
     description: 'DAO & Proposals',
     status: 'live'
   },
@@ -53,7 +53,7 @@ export const IOI_APPS: NetworkApp[] = [
     name: 'Documentation',
     url: 'https://docs.ioi.network',
     devUrl: 'http://localhost:3002',
-    icon: BookOpen,
+    icon: BookMinus,
     description: 'Kernel & SDK Refs',
     status: 'live'
   },
@@ -62,7 +62,7 @@ export const IOI_APPS: NetworkApp[] = [
     name: 'Block Explorer',
     url: 'https://scan.ioi.network',
     devUrl: 'http://localhost:3003',
-    icon: Terminal,
+    icon: TerminalSquare,
     description: 'Transaction Ledger',
     status: 'live'
   },
@@ -71,7 +71,7 @@ export const IOI_APPS: NetworkApp[] = [
     name: 'Agent Studio',
     url: 'https://studio.ioi.network',
     devUrl: 'http://localhost:3004',
-    icon: ShieldCheck,
+    icon: Brain,
     description: 'Underwriting & Deploy',
     status: 'maintenance'
   }
