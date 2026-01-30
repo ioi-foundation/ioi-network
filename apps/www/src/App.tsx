@@ -55,7 +55,9 @@ export default function RootApp() {
       <NetworkHeader currentAppId="hub" />
       <MainNetStatus />
       <Hero />
-      <StatTicker />
+      <div className="bg-black w-full max-w-full md:max-w-5xl lg:max-w-6xl xl:max-w-7xl 2xl:max-w-[1600px] mx-auto px-3 sm:px-6 md:px-8 lg:px-12 xl:px-16 relative z-10">
+        <StatTicker />
+      </div>
     </div>
   );
 }
