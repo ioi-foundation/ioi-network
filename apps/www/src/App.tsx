@@ -11,6 +11,7 @@ import {
 
 import { MainNetStatus } from './components/MainNetStatus';
 import { Hero } from './components/Hero';
+import { StatTicker } from './components/StatTicker';
 // --- Local Components ---
 
 const AppCard = ({ app }: { app: typeof IOI_APPS[0] }) => {
@@ -47,40 +48,6 @@ const AppCard = ({ app }: { app: typeof IOI_APPS[0] }) => {
   );
 };
 
-const StatTicker = () => {
-  // Simulated live stats
-  const [blockHeight, setBlockHeight] = useState(12940221);
-  const [tps, setTps] = useState(1240);
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setBlockHeight(h => h + 1);
-      setTps(prev => prev + Math.floor(Math.random() * 20) - 10);
-    }, 2000);
-    return () => clearInterval(interval);
-  }, []);
-
-  const stats = [
-    { label: 'Block Height', value: `#${blockHeight.toLocaleString()}`, icon: Layers },
-    { label: 'Network TPS', value: tps.toLocaleString(), icon: Zap },
-    { label: 'Active Agents', value: '14,203', icon: Cpu },
-    { label: 'Global Nodes', value: '842', icon: Globe },
-  ];
-
-  return (
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-20">
-      {stats.map((stat, i) => (
-        <SkeletonCard key={i} className="flex items-center gap-4 !bg-zinc-950/50 backdrop-blur-sm">
-          <stat.icon className="w-5 h-5 text-zinc-600" />
-          <div>
-            <div className="text-[10px] uppercase tracking-wider text-zinc-500 font-bold">{stat.label}</div>
-            <div className="text-sm font-mono text-zinc-200">{stat.value}</div>
-          </div>
-        </SkeletonCard>
-      ))}
-    </div>
-  );
-};
 
 export default function RootApp() {
   return (
@@ -88,6 +55,7 @@ export default function RootApp() {
       <NetworkHeader currentAppId="hub" />
       <MainNetStatus />
       <Hero />
+      <StatTicker />
     </div>
   );
 }
