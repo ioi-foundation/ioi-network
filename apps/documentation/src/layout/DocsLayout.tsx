@@ -26,7 +26,7 @@ export const DocsLayout = ({ children, sidebar, toc, activeTab, onTabChange }: D
         {/* Sidebar */}
         <aside className={`
           fixed inset-y-0 left-0 z-50 w-72 bg-zinc-950 border-r border-zinc-800 transform transition-transform duration-200 lg:translate-x-0
-          top-9 /* Pushed down by NetworkHeader */
+          top-24 /* Pushed down by NetworkHeader */
           ${mobileOpen ? 'translate-x-0' : '-translate-x-full'}
         `}>
           {/* Sidebar Header - Logo removed, just context title */}
@@ -44,7 +44,7 @@ export const DocsLayout = ({ children, sidebar, toc, activeTab, onTabChange }: D
         <div className="flex-1 lg:pl-72 flex flex-col min-h-[calc(100vh-2.25rem)] pt-9">
           
           {/* App Header (Tabs & Search) */}
-          <header className="h-14 sticky top-9 z-40 bg-zinc-950/80 backdrop-blur-sm border-b border-zinc-800 flex items-center justify-between px-6">
+          <header className="h-19 mt-24 z-40 bg-zinc-950/80 backdrop-blur-sm border-b border-zinc-800 flex items-center justify-between px-6">
             <div className="flex items-center gap-4">
               <button onClick={() => setMobileOpen(true)} className="lg:hidden text-zinc-400">
                 <Menu className="w-5 h-5" />
