@@ -68,7 +68,7 @@ export interface NetworkHeaderProps {
 // ArrowRight, Globe, Cpu, Zap, Layers
 export const NetworkHeader = ({ currentAppId, className = '' }: NetworkHeaderProps) => {
   return (
-    <div className="w-screen bg-black">
+    <div className="w-screen bg-black fixed top-0 z-50">
       {/* header banner */}
       <div className="w-full max-w-full sm:max-w-full md:max-w-6xl lg:max-w-7xl xl:max-w-[1536px] 2xl:max-w-[1760px] mx-auto px-4 sm:px-6 md:px-8 lg:px-12 xl:px-16">
         <nav className='flex justify-between items-center py-2'>

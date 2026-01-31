@@ -61,8 +61,7 @@ export const Sidebar = ({
       {/* Sidebar */}
       <aside className={`
         fixed left-0 z-50 bg-zinc-950 border-r border-zinc-800
-        transform transition-all duration-200 ease-out
-        top-9 bottom-0 /* Pushed down by NetworkHeader */
+        transform transition-all duration-200 ease-out top-24 bottom-0 /* Pushed down by NetworkHeader */
         ${mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
         ${collapsed ? 'w-16' : 'w-56'} 
         flex flex-col
