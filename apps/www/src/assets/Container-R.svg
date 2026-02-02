@@ -1,0 +1,25 @@
+<svg width="443" height="126" viewBox="0 0 443 126" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g clip-path="url(#clip0_2055_26)">
+<rect x="-1" y="1" width="440.5" height="30" rx="15" transform="matrix(-1 0 0 1 440.5 -24)" stroke="#0075FF" stroke-width="2"/>
+<rect width="221.25" height="2" transform="matrix(-1 0 0 1 442.5 28)" fill="white"/>
+<rect width="442.5" height="2" transform="matrix(-1 0 0 1 442.5 50)" fill="#0075FF"/>
+<rect width="221.25" height="2" transform="matrix(-1 0 0 1 442.5 72)" fill="white"/>
+<rect width="442.5" height="2" transform="matrix(-1 0 0 1 442.5 94)" fill="#0075FF"/>
+<rect width="221.25" height="2" transform="matrix(-1 0 0 1 442.5 116)" fill="white"/>
+<rect width="82" height="126" transform="matrix(-1 0 0 1 442.5 0)" fill="url(#paint0_linear_2055_26)"/>
+<rect width="82" height="126" transform="matrix(1 0 0 -1 0 126)" fill="url(#paint1_linear_2055_26)"/>
+</g>
+<defs>
+<linearGradient id="paint0_linear_2055_26" x1="82" y1="63" x2="0" y2="63" gradientUnits="userSpaceOnUse">
+<stop stop-opacity="0"/>
+<stop offset="1"/>
+</linearGradient>
+<linearGradient id="paint1_linear_2055_26" x1="82" y1="63" x2="0" y2="63" gradientUnits="userSpaceOnUse">
+<stop stop-opacity="0"/>
+<stop offset="1"/>
+</linearGradient>
+<clipPath id="clip0_2055_26">
+<rect width="442.5" height="126" fill="white" transform="matrix(-1 0 0 1 442.5 0)"/>
+</clipPath>
+</defs>
+</svg>
