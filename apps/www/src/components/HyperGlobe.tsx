@@ -1,7 +1,12 @@
 import { useEffect, useRef } from "react";
 
-// Use absolute paths so the library loads assets correctly (it only resolves relative URLs when baseurl starts with "http")
+// Use absolute paths so the library loads assets correctly
 const GLOBE_BASE = "/globe";
+
+// OPTION A: Use the new sharp-point.png for crisp particles with subtle glow
+// OPTION B: Use crisp-point.png for even sharper, more minimal glow
+// OPTION C: Remove --point-image entirely for native WebGL points (sharpest, no texture)
+
 const globeHtml = `
 <style>
 .globe-marker {
@@ -15,7 +20,59 @@ const globeHtml = `
   --marker-size: 1.6;
 }
 </style>
-<hyper-globe id="hologram-globe" data-baseurl="/globe/" data-location="13.0803 -84.6565" data-version="17" style="width: 100%; height: 100%; min-width: 100%; min-height: 100%; display: block; --preview-size: 100%; --globe-scale:0.76; --globe-damping:0.5; --map-density:0.52; --map-height:0.5; --point-size:2.6; --point-color:#5eb8ff; --point-opacity:0.95; --backside-opacity:0.35; --backside-transition:0.5; --backside-color:#0d47a1; --marker-size:1.2; --text-color:#90caf9; --text-size:0.8; --line-color:#64b5f6; --line-offset:0.5; --line-thickness:1.5; --autorotate:true; --autorotate-speed:0.5; --autorotate-delay:4; --autorotate-latitude:10; --title-position:0 -1; --title-padding:1.2; --text-padding:0.5; --animation:offset; --animation-intensity:0.3; --animation-scale:0.8; --animation-speed:0.2; --globe-foreground:url('${GLOBE_BASE}/hologram-shine.svg'); --point-opacity-map:url('${GLOBE_BASE}/light.jpg'); --point-image:url('${GLOBE_BASE}/hologram-point.png'); --marker-image:url('${GLOBE_BASE}/hologram-marker.png'); --preview-color:#000000; --text-height:1.1; --point-color-blend:multiply; --equator:true; --islands:true; --marker-offset:0.2; max-width: 100%;">
+<hyper-globe 
+  id="hologram-globe" 
+  data-baseurl="/globe/" 
+  data-location="13.0803 -84.6565" 
+  data-version="17" 
+  style="
+    width: 100%; 
+    height: 100%; 
+    min-width: 100%; 
+    min-height: 100%; 
+    display: block; 
+    --preview-size: 100%; 
+    --globe-scale: 0.76; 
+    --globe-damping: 0.5; 
+    --globe-quality: high;
+    --map-density: 0.52; 
+    --map-height: 0.5; 
+    --point-size: 2.2;
+    --point-color: #5eb8ff; 
+    --point-opacity: 0.95; 
+    --point-color-blend: replace;
+    --point-image: url('${GLOBE_BASE}/crisp-point.png');
+    --backside-opacity: 0.35; 
+    --backside-transition: 0.5; 
+    --backside-color: #0d47a1; 
+    --marker-size: 1.2; 
+    --text-color: #90caf9; 
+    --text-size: 0.8; 
+    --line-color: #64b5f6; 
+    --line-offset: 0.5; 
+    --line-thickness: 1.5; 
+    --autorotate: true; 
+    --autorotate-speed: 0.5; 
+    --autorotate-delay: 4; 
+    --autorotate-latitude: 10; 
+    --title-position: 0 -1; 
+    --title-padding: 1.2; 
+    --text-padding: 0.5; 
+    --animation: offset; 
+    --animation-intensity: 0.3; 
+    --animation-scale: 0.8; 
+    --animation-speed: 0.2; 
+    --globe-foreground: url('${GLOBE_BASE}/hologram-shine.svg'); 
+    --point-opacity-map: url('${GLOBE_BASE}/light.jpg'); 
+    --marker-image: url('${GLOBE_BASE}/hologram-marker.png'); 
+    --preview-color: #000000; 
+    --text-height: 1.1; 
+    --equator: true; 
+    --islands: true; 
+    --marker-offset: 0.2; 
+    max-width: 100%;
+  "
+>
   <a slot="markers" data-location="34 -118" title="Los Angeles" class="globe-marker"></a>
   <a slot="markers" data-location="-12 -77" title="Lima" class="globe-marker"></a>
   <a slot="markers" data-location="40 -74" title="New York" class="globe-marker"></a>
