@@ -1,12 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import { ArrowRight, Globe, Cpu, Zap, Layers } from 'lucide-react';
 import {
   NetworkHeader,
-  IOI_APPS,
-  getAppUrl,
   FadeIn,
-  Stagger,
-  SkeletonCard
 } from '@ioi/ui';
 
 import { MainNetStatus } from './components/MainNetStatus';
@@ -21,7 +15,7 @@ export default function RootApp() {
       <NetworkHeader currentAppId="hub" />
       <MainNetStatus />
       <Hero />
-      <div className="bg-black w-full max-w-full md:max-w-5xl lg:max-w-6xl xl:max-w-7xl 2xl:max-w-[1600px] mx-auto px-3 sm:px-6 md:px-8 lg:px-12 xl:px-16 relative z-10">
+      <div className="z-30 bg-black w-full max-w-full md:max-w-5xl lg:max-w-6xl xl:max-w-7xl 2xl:max-w-[1600px] mx-auto px-3 sm:px-6 md:px-8 lg:px-12 xl:px-16 relative">
         <FadeIn delay={100}>
           <StatTicker />
         </FadeIn>
@@ -32,8 +26,6 @@ export default function RootApp() {
           <Subsystems />
         </FadeIn>
       </div>
-     
     </div>
-
   );
 }
