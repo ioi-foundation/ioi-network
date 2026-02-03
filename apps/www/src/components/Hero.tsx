@@ -2,9 +2,8 @@ import { FadeIn, getAppUrl, IOI_APPS, Stagger } from "@ioi/ui";
 import React from "react";
 import Container from "../assets/Container.svg";
 import FormatLine from "../assets/Container-R.svg";
-import heroVideo from "../assets/Global.mkv?url";
 import { ArrowRight } from "lucide-react";
-// import { DotLottieReact } from "@lottiefiles/dotlottie-react";
+import { HyperGlobe } from "./HyperGlobe";
 
 export const Hero = () => {
   return (
@@ -26,15 +25,15 @@ export const Hero = () => {
             className="relative border-r border-b border-white/10 flex flex-col items-center justify-center p-4 sm:p-6 md:p-8 bg-black font-sans min-w-0"
             style={{ gridColumn: '2 / 12', gridRow: '2 / 6' }}
           >
-            <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold text-white mb-4 sm:mb-6 text-center leading-[1.2] z-10">
+            <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold text-white mb-4 sm:mb-6 text-center leading-[1.2] z-30">
               <span className="block mb-2 sm:mb-3">The Infrastructure for</span>
               <span className="block">Autonomous Agents</span>
             </h1>
-            <p className="leading-[1.3] text-base sm:text-lg md:text-xl text-white/60 max-w-xl mx-auto mb-6 sm:mb-10 text-center px-1 z-10">
+            <p className="leading-[1.3] text-base sm:text-lg md:text-xl text-white/60 max-w-xl mx-auto mb-6 sm:mb-10 text-center px-1 z-30">
               IOI Network is a decentralized physical infrastructure network{" "}
               <span className="bg-[#202020] px-1 py-0.5 rounded-md">(DePIN)</span> optimized for AI workloads.
             </p>
-            <div className="flex flex-col sm:flex-row flex-wrap gap-3 sm:gap-4 justify-center text-sm sm:text-base font-sans font-medium w-full sm:w-auto z-10">
+            <div className="flex flex-col sm:flex-row flex-wrap gap-3 sm:gap-4 justify-center text-sm sm:text-base font-sans font-medium w-full sm:w-auto z-30">
               <a
                 href={getAppUrl(IOI_APPS.find(a => a.id === 'docs')!)}
                 className="px-4 py-2 sm:px-5 sm:py-2.5 rounded-lg bg-white text-black transition-colors hover:bg-white/80 hover:scale-[1.02] active:scale-[0.98] text-center flex items-center justify-center"
@@ -48,7 +47,6 @@ export const Hero = () => {
                 Launch Hub <ArrowRight className="w-4 h-4 shrink-0" />
               </a>
             </div>
-           
           </div>
           {/* Grid cells (skip merged area) */}
           {Array.from({ length: 12 * 8 }, (_, i) => {
@@ -64,19 +62,10 @@ export const Hero = () => {
               />
             );
           })}
-          
+
         </div>
-        
       </div>
-      <video
-            src={heroVideo}
-            className="absolute left-1/2 -translate-x-1/2 w-[85vw] max-w-[650px] sm:w-[400px] md:w-[500px] lg:w-[600px] xl:w-[650px] -bottom-[100px] sm:-bottom-[160px] md:-bottom-[220px] lg:-bottom-[280px] xl:-bottom-[300px] pointer-events-none object-contain"
-            muted
-            loop
-            autoPlay
-            playsInline
-            aria-hidden
-          />
+      <HyperGlobe className="absolute left-1/2 -translate-x-1/2 -translate-y-1/2 w-[900px] h-[900px] z-20" />
     </div>
 
   );

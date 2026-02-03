@@ -1,0 +1,14 @@
+<svg version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px" width="512px" height="512px" viewBox="0 0 512 512" style="enable-background:new 0 0 512 512;" xml:space="preserve">
+<style type="text/css">
+	circle{fill:url(#grad);}
+</style>
+<radialGradient id="grad" cx="256" cy="256" r="256" gradientUnits="userSpaceOnUse">
+	<stop offset="0.2" style="stop-color:#33a7ff;stop-opacity:0;"/>
+	<stop offset="0.4" style="stop-color:#33a7ff;stop-opacity:0.02;"/>
+	<stop offset="0.55" style="stop-color:#33a7ff;stop-opacity:0.05;"/>
+	<stop offset="0.81" style="stop-color:#33a7ff;stop-opacity:0.2;"/>
+	<stop offset="0.89" style="stop-color:#33a7ff;stop-opacity:0.05;"/>
+	<stop offset="0.95" style="stop-color:#33a7ff;stop-opacity:0;"/>
+</radialGradient>
+<circle cx="256" cy="256" r="256"/>
+</svg>
