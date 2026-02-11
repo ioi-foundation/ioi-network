@@ -1,17 +1,18 @@
 {
   "name": "ioi-network-monorepo",
   "private": true,
-  "version": "2.4.0",
+  "version": "2.4.1",
   "workspaces": [
     "apps/*",
     "packages/*"
   ],
   "scripts": {
     "install:all": "npm install",
-    "dev": "concurrently \"npm run dev:www\" \"npm run dev:gov\" \"npm run dev:docs\" --kill-others --prefix-colors blue,magenta,yellow --names \"WWW,GOV,DOCS\"",
+    "dev": "concurrently \"npm run dev:www\" \"npm run dev:gov\" \"npm run dev:docs\" \"npm run dev:explorer\" --kill-others --prefix-colors blue,magenta,yellow,cyan --names \"WWW,GOV,DOCS,EXPL\"",
     "dev:www": "npm run dev --workspace=apps/www",
     "dev:gov": "npm run dev --workspace=apps/governance",
     "dev:docs": "npm run dev --workspace=apps/documentation",
+    "dev:explorer": "npm run dev --workspace=apps/explorer",
     "build": "npm run build --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present",
     "clean": "rm -rf node_modules apps/*/node_modules apps/*/dist"
