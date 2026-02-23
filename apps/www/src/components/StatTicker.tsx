@@ -1,7 +1,5 @@
 import { Cpu, Globe, Layers, Network } from "lucide-react";
 import { useEffect, useState, useRef } from "react";
-import InfoGraphic4 from "../assets/Infographic4.json";
-import { DotLottieReact, type DotLottie } from "@lottiefiles/dotlottie-react";
 
 const MIN_BAR_PCT = 8;
 const MAX_BLOCK_DELTA = 5;
@@ -100,15 +98,16 @@ const BlockHeightChart = ({
   );
 };
 
-// Network TPS: 8 horizontal bars — style from Infographic2.json (stroke-based, green #3FEAA1, dark grid)
+// Network TPS: 8 horizontal bars — professional pill-style bars, layered glow, subtle grid
 const TPS_CHART_BARS = 8;
-const TPS_CHART_STROKE_W = 3; // bar line thickness (Infographic2: "w":3)
-const TPS_CHART_GAP = 10;
-const TPS_CHART_WIDTH = 100;  // larger so bar length changes are very visible
+const TPS_BAR_H = 4; // pill height (capsule-style bars)
+const TPS_CHART_GAP = 8;
+const TPS_CHART_WIDTH = 100;
 const TPS_CHART_HEIGHT = 115;
 const TPS_CHART_ANIM_MS = 300;
-const TPS_BAR_COLOR = "#3FEAA1"; // Infographic2 stroke: [0.247,0.918,0.631,1]
-const TPS_GRID_COLOR = "rgba(23,27,26,1)"; // Infographic2 grid: [0.09,0.106,0.102,1]
+const TPS_BAR_COLOR = "#3FEAA1";
+const TPS_GRID_COLOR = "rgba(60, 70, 68, 0.6)"; // faint grey grid lines
+const TPS_TICK_COLOR = "rgba(120, 130, 128, 0.5)"; // subtle axis tick marks
 
 function computeTpsBars(tps: number, peakTps: number): number[] {
   const currentLoad = Math.min(100, (tps / MAX_TPS) * 100);
@@ -174,50 +173,92 @@ const NetworkTpsChart = ({ tps, peakTps }: { tps: number; peakTps: number }) => 
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, w, h);
 
-      const padX = 4;
-      const maxW = w - padX * 2;
-      const totalBarsH =
-        TPS_CHART_STROKE_W * TPS_CHART_BARS + TPS_CHART_GAP * (TPS_CHART_BARS - 1);
+      const padX = 8;
+      const tickW = 4;
+      const maxW = w - padX * 2 - tickW;
+      const totalBarsH = TPS_BAR_H * TPS_CHART_BARS + TPS_CHART_GAP * (TPS_CHART_BARS - 1);
       const padY = (h - totalBarsH) / 2;
+      const barLeft = padX + tickW;
 
-      // Background grid: dashed horizontal lines (like in reference image)
-      ctx.strokeStyle = TPS_GRID_COLOR;
-      ctx.lineWidth = 2;
-      ctx.lineCap = "round";
-      ctx.setLineDash([4, 4]);
-      for (let i = 0; i < TPS_CHART_BARS; i++) {
-        const y = padY + i * (TPS_CHART_STROKE_W + TPS_CHART_GAP) + TPS_CHART_STROKE_W / 2;
+      // Helper: draw a horizontal pill (semicircle caps) from barLeft to barLeft + barW at centerY
+      const pillR = TPS_BAR_H / 2;
+      const drawPill = (bx: number, bw: number, centerY: number) => {
+        if (bw <= 0) return;
+        const x1 = bx + bw;
         ctx.beginPath();
-        ctx.moveTo(padX, y);
-        ctx.lineTo(padX + maxW, y);
+        ctx.moveTo(bx + pillR, centerY - pillR);
+        ctx.lineTo(x1 - pillR, centerY - pillR);
+        ctx.arc(x1 - pillR, centerY, pillR, -Math.PI / 2, Math.PI / 2);
+        ctx.lineTo(bx + pillR, centerY + pillR);
+        ctx.arc(bx + pillR, centerY, pillR, Math.PI / 2, Math.PI * 1.5);
+        ctx.closePath();
+      };
+
+      const barCenterY = (i: number) =>
+        padY + i * (TPS_BAR_H + TPS_CHART_GAP) + TPS_BAR_H / 2;
+
+      // Grid: faint horizontal lines + left axis tick marks
+      ctx.strokeStyle = TPS_GRID_COLOR;
+      ctx.lineWidth = 1;
+      ctx.setLineDash([3, 4]);
+      for (let i = 0; i < TPS_CHART_BARS; i++) {
+        const cy = barCenterY(i);
+        ctx.beginPath();
+        ctx.moveTo(barLeft, cy);
+        ctx.lineTo(barLeft + maxW, cy);
         ctx.stroke();
       }
       ctx.setLineDash([]);
+      ctx.strokeStyle = TPS_TICK_COLOR;
+      ctx.lineWidth = 1;
+      for (let i = 0; i < TPS_CHART_BARS; i++) {
+        const cy = barCenterY(i);
+        ctx.beginPath();
+        ctx.moveTo(padX, cy);
+        ctx.lineTo(padX + tickW, cy);
+        ctx.stroke();
+      }
 
-      // Bars: stroked lines with glow (brighter core fading outwards)
-      const barY = (i: number) =>
-        padY + i * (TPS_CHART_STROKE_W + TPS_CHART_GAP) + TPS_CHART_STROKE_W / 2;
-      ctx.lineCap = "round";
-      ctx.lineJoin = "round";
+      // Shadow offset so the cast shadow is clearly visible behind each bar
+      const TPS_SHADOW_OFFSET_X = 3;
+      const TPS_SHADOW_OFFSET_Y = 3;
+
+      // Bars: pill-shaped with visible cast shadow + glow + core
       for (let i = 0; i < TPS_CHART_BARS; i++) {
         const fillPct = Math.max(4, Math.min(100, s.cur[i]));
         const barW = (maxW * fillPct) / 100;
-        const y = barY(i);
+        const cy = barCenterY(i);
         if (barW > 0) {
-          // Glow: wider semi-transparent stroke first
-          ctx.strokeStyle = "rgba(63, 234, 161, 0.35)";
-          ctx.lineWidth = TPS_CHART_STROKE_W + 6;
-          ctx.beginPath();
-          ctx.moveTo(padX, y);
-          ctx.lineTo(padX + barW, y);
-          ctx.stroke();
-          // Core: solid green stroke on top
-          ctx.strokeStyle = TPS_BAR_COLOR;
-          ctx.lineWidth = TPS_CHART_STROKE_W;
-          ctx.beginPath();
-          ctx.moveTo(padX, y);
-          ctx.lineTo(padX + barW, y);
-          ctx.stroke();
+          // 1. Cast shadow: offset pill in dark color (visible on black) + soft blur
+          ctx.shadowColor = "rgba(0, 0, 0, 0.7)";
+          ctx.shadowBlur = 8;
+          ctx.shadowOffsetX = 0;
+          ctx.shadowOffsetY = 0;
+          ctx.fillStyle = "rgba(15, 25, 22, 0.85)";
+          drawPill(barLeft + TPS_SHADOW_OFFSET_X, barW, cy + TPS_SHADOW_OFFSET_Y);
+          ctx.fill();
+          ctx.shadowBlur = 0;
+
+          // 2. Outer soft halo (glow)
+          ctx.shadowColor = "rgba(63, 234, 161, 0.35)";
+          ctx.shadowBlur = 14;
+          ctx.fillStyle = "rgba(63, 234, 161, 0.45)";
+          drawPill(barLeft, barW, cy);
+          ctx.fill();
+          ctx.shadowBlur = 0;
+
+          // 3. Inner glow
+          ctx.shadowColor = "rgba(63, 234, 161, 0.55)";
+          ctx.shadowBlur = 8;
+          ctx.fillStyle = "rgba(63, 234, 161, 0.55)";
+          drawPill(barLeft, barW, cy);
+          ctx.fill();
+          ctx.shadowBlur = 0;
+
+          // 4. Core bar (solid)
+          ctx.fillStyle = TPS_BAR_COLOR;
+          drawPill(barLeft, barW, cy);
+          ctx.fill();
         }
       }
 
@@ -244,8 +285,8 @@ const AGENTS_MAIN_STROKE = 9;
 const AGENTS_RING_GAP = 6;
 const AGENTS_INNER_RING_THICKNESS = 6;
 const AGENTS_MARKER_R = 4.5;
-const AGENTS_CENTER_FONT = "500 22px system-ui, -apple-system, sans-serif";
-const AGENTS_GLOW_BLUR = 14;
+const AGENTS_CENTER_FONT = "500 18px system-ui, -apple-system, sans-serif";
+const AGENTS_GLOW_BLUR = 20;
 // Inset so outer ring + 12 o'clock dot are fully inside canvas (no cut)
 const AGENTS_SAFE_INSET = AGENTS_MAIN_STROKE / 2 + AGENTS_MARKER_R + 4;
 
@@ -263,7 +304,7 @@ const AGENTS_OUTER_GRADIENT_STOPS: [number, string][] = [
 const AGENTS_INNER_ARC = "#4ADE80";
 const AGENTS_INNER_ARC_DARK = "rgba(22, 101, 52, 0.95)";
 const AGENTS_TRACK = "rgba(15, 23, 22, 0.95)";
-const AGENTS_GLOW = "rgba(74, 222, 128, 0.25)";
+const AGENTS_GLOW = "rgba(74, 222, 128, 0.35)";
 const AGENTS_MARKER_BLUE = "#38BDF8";
 const AGENTS_MARKER_GREEN = "#4ADE80";
 const AGENTS_MARKER_BORDER = "rgba(9, 27, 28, 0.95)";
@@ -425,8 +466,10 @@ const ActiveAgentsChart = ({
       ctx.arc(cx, cy, rMain, AGENTS_12, AGENTS_12 + Math.PI * 2);
       ctx.stroke();
 
-      // Outer ring (Segment 1 – Total scale): gradient arc animated by count/max, fills 0–100% of circle
+      // Outer ring (Segment 1 – Total scale): gradient arc animated by count/max, fills 0–100% of circle (with soft glow)
       if (outerSweep > 0.02) {
+        ctx.shadowColor = "rgba(125, 211, 252, 0.5)";
+        ctx.shadowBlur = 12;
         let gradientStyle: CanvasGradient | string = AGENTS_OUTER_GRADIENT_STOPS[0][1];
         const createConic = (ctx as CanvasRenderingContext2D & { createConicGradient?(startAngle: number, x: number, y: number): CanvasGradient }).createConicGradient;
         if (createConic) {
@@ -439,10 +482,13 @@ const ActiveAgentsChart = ({
         ctx.beginPath();
         ctx.arc(cx, cy, rMain, AGENTS_12, outerArcEnd);
         ctx.stroke();
+        ctx.shadowBlur = 0;
       }
 
-      // Marker A (blue): current position at end of outer scale arc
+      // Marker A (blue): current position at end of outer scale arc (with subtle glow)
       const bluePt = angleToXY(cx, cy, outerSweep > 0.02 ? outerArcEnd : AGENTS_12, rMain);
+      ctx.shadowColor = "rgba(56, 189, 248, 0.6)";
+      ctx.shadowBlur = 8;
       ctx.fillStyle = AGENTS_MARKER_BLUE;
       ctx.strokeStyle = AGENTS_MARKER_BORDER;
       ctx.lineWidth = 1.5;
@@ -450,8 +496,9 @@ const ActiveAgentsChart = ({
       ctx.arc(bluePt.x, bluePt.y, AGENTS_MARKER_R, 0, Math.PI * 2);
       ctx.fill();
       ctx.stroke();
+      ctx.shadowBlur = 0;
 
-      // Inner ring (thickness): Segment 1 – total scale (green) + Segment 2 – growth (dark)
+      // Inner ring (thickness): Segment 1 – total scale (green) + Segment 2 – growth (dark), both with shadow
       if (rInnerInner < rInnerOuter) {
         if (innerBrightSweep > 0) {
           drawRingSegment(ctx, cx, cy, rInnerOuter, rInnerInner, AGENTS_1, innerBrightEnd);
@@ -459,38 +506,47 @@ const ActiveAgentsChart = ({
           ctx.shadowBlur = AGENTS_GLOW_BLUR;
           ctx.fillStyle = AGENTS_INNER_ARC;
           ctx.fill();
-          ctx.shadowBlur = 0;
           ctx.strokeStyle = "rgba(74, 222, 128, 0.5)";
           ctx.lineWidth = 1;
           ctx.stroke();
+          ctx.shadowBlur = 0;
         }
         if (innerDarkSweep > 0) {
           drawRingSegment(ctx, cx, cy, rInnerOuter, rInnerInner, innerBrightEnd, innerDarkEnd);
+          ctx.shadowColor = "rgba(22, 101, 52, 0.5)";
+          ctx.shadowBlur = AGENTS_GLOW_BLUR;
           ctx.fillStyle = AGENTS_INNER_ARC_DARK;
           ctx.fill();
           ctx.strokeStyle = "rgba(22, 101, 52, 0.6)";
           ctx.lineWidth = 1;
           ctx.stroke();
+          ctx.shadowBlur = 0;
         }
       }
 
       const rInnerMid = (rInnerOuter + rInnerInner) / 2;
       const greenStartPt = angleToXY(cx, cy, AGENTS_1, rInnerMid);
+      ctx.shadowColor = "rgba(74, 222, 128, 0.6)";
+      ctx.shadowBlur = 6;
       ctx.fillStyle = AGENTS_MARKER_GREEN;
       ctx.strokeStyle = AGENTS_MARKER_BORDER;
       ctx.beginPath();
       ctx.arc(greenStartPt.x, greenStartPt.y, AGENTS_MARKER_R, 0, Math.PI * 2);
       ctx.fill();
       ctx.stroke();
+      ctx.shadowBlur = 0;
 
       if (innerBrightSweep > 0.02) {
         const greenCurrentPt = angleToXY(cx, cy, innerBrightEnd, rInnerMid);
+        ctx.shadowColor = "rgba(74, 222, 128, 0.6)";
+        ctx.shadowBlur = 6;
         ctx.fillStyle = AGENTS_MARKER_GREEN;
         ctx.strokeStyle = AGENTS_MARKER_BORDER;
         ctx.beginPath();
         ctx.arc(greenCurrentPt.x, greenCurrentPt.y, AGENTS_MARKER_R, 0, Math.PI * 2);
         ctx.fill();
         ctx.stroke();
+        ctx.shadowBlur = 0;
       }
 
       ctx.fillStyle = "rgba(255, 255, 255, 0.98)";
@@ -519,6 +575,130 @@ const ActiveAgentsChart = ({
   );
 };
 
+// Global Nodes: radial "network pulse" — 6 beams, each driven by the 2 variables per role (concept doc §2). No background.
+// Beam roles: 0 scale (nodes) | 1 health (uptime) | 2 magnitude (nodes) | 3 finer (nodes) | 4 stability (uptime) | 5 blend (both)
+const NODES_CHART_SIZE = 100;
+const NODES_CHART_ANIM_MS = 360;
+const NODES_BEAM_COLORS = ["#06B6D4", "#10B981", "#8B5CF6", "#EAB308", "#F97316", "#EC4899"] as const;
+const NODES_MIN_RADIUS_PCT = 0.22;
+const NODES_BEAM_THICKNESS = 5;
+const NODES_GLOW_BLUR_MAX = 18;
+
+function computeNodesBeamLengths(globalNodes: number, uptime: number): number[] {
+  const nodeScale = Math.min(1, globalNodes / MAX_NODES);
+  const health = Math.min(1, Math.max(0, uptime / 100));
+  const magnitudeOffset = Math.min(1, Math.floor(globalNodes / 1000) / 10);
+  const finer = (globalNodes % 1000) / 1000;
+  const blend = nodeScale * 0.5 + health * 0.5;
+  return [nodeScale, health, magnitudeOffset, finer, health, blend];
+}
+
+const GlobalNodesChart = ({ globalNodes, uptime }: { globalNodes: number; uptime: number }) => {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const targetLengths = computeNodesBeamLengths(globalNodes, uptime);
+  const anim = useRef({
+    lengths: [...targetLengths],
+    from: [...targetLengths],
+    target: targetLengths,
+    t0: 0,
+    raf: 0,
+  });
+
+  useEffect(() => {
+    const next = computeNodesBeamLengths(globalNodes, uptime);
+    const s = anim.current;
+    s.from = [...s.lengths];
+    s.target = next;
+    s.t0 = performance.now();
+    cancelAnimationFrame(s.raf);
+
+    const paint = (now: number) => {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+
+      const elapsed = now - s.t0;
+      const t = Math.min(1, elapsed / NODES_CHART_ANIM_MS);
+      const ease = 1 - (1 - t) ** 2.4;
+
+      for (let i = 0; i < 6; i++) {
+        s.lengths[i] = s.from[i] + (s.target[i] - s.from[i]) * ease;
+      }
+
+      const breath = 0.04 * Math.sin(now / 2800);
+      const dpr = window.devicePixelRatio || 1;
+      const size = NODES_CHART_SIZE;
+      if (canvas.width !== size * dpr || canvas.height !== size * dpr) {
+        canvas.width = size * dpr;
+        canvas.height = size * dpr;
+      }
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, size, size);
+
+      const cx = size / 2;
+      const cy = size / 2;
+      const maxR = size / 2 - 8;
+      const minR = maxR * NODES_MIN_RADIUS_PCT;
+      const angleStep = (2 * Math.PI) / 6;
+      const startAngle = -Math.PI / 2;
+
+      const breathPeriod = 1800;
+      const breathAmp = 0.16;
+      const glowPulse = 0.88 + 0.14 * Math.sin(now / 1400);
+
+      for (let i = 0; i < 6; i++) {
+        const raw = Math.max(0, Math.min(1, s.lengths[i]));
+        const beamPhase = (i / 6) * Math.PI * 2;
+        const breathI = breathAmp * Math.sin(now / breathPeriod + beamPhase);
+        const r = minR + (maxR - minR) * (raw * (1 + breathI));
+        const angle = startAngle + i * angleStep;
+        const ex = cx + r * Math.cos(angle);
+        const ey = cy + r * Math.sin(angle);
+
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.lineTo(ex, ey);
+        ctx.strokeStyle = NODES_BEAM_COLORS[i];
+        ctx.lineWidth = NODES_BEAM_THICKNESS;
+        ctx.lineCap = "round";
+        ctx.shadowColor = NODES_BEAM_COLORS[i];
+        ctx.shadowBlur = NODES_GLOW_BLUR_MAX * (0.4 + 0.6 * raw) * glowPulse;
+        ctx.stroke();
+      }
+      ctx.shadowBlur = 0;
+
+      const corePulse = 2.6 + 1.2 * Math.sin(now / 1200);
+      const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, corePulse * 3);
+      grad.addColorStop(0, "rgba(255,255,255,0.95)");
+      grad.addColorStop(0.4, "rgba(200,220,255,0.4)");
+      grad.addColorStop(1, "rgba(200,220,255,0)");
+      ctx.beginPath();
+      ctx.arc(cx, cy, corePulse * 3, 0, Math.PI * 2);
+      ctx.fillStyle = grad;
+      ctx.fill();
+      ctx.fillStyle = "rgba(255,255,255,0.9)";
+      ctx.beginPath();
+      ctx.arc(cx, cy, corePulse, 0, Math.PI * 2);
+      ctx.fill();
+
+      s.raf = requestAnimationFrame(paint);
+    };
+
+    s.raf = requestAnimationFrame(paint);
+    return () => cancelAnimationFrame(s.raf);
+  }, [globalNodes, uptime]);
+
+  return (
+    <canvas
+      ref={canvasRef}
+      style={{ width: NODES_CHART_SIZE, height: NODES_CHART_SIZE }}
+      className="shrink-0"
+      aria-label={`Global nodes: ${globalNodes.toLocaleString()}, uptime ${uptime.toFixed(2)}%; radial chart shows scale, health, magnitude, finer scale, stability, and network state.`}
+    />
+  );
+};
+
 export const StatTicker = () => {
   const [blockHeight, setBlockHeight] = useState(12940221);
   const [blockUpdateTime, setBlockUpdateTime] = useState(0.4);
@@ -535,8 +715,6 @@ export const StatTicker = () => {
   const [blockBars, setBlockBars] = useState<[number, number, number, number]>([
     20, 80, 22, 30,
   ]);
-
-  const dotLottie4 = useRef<DotLottie | null>(null);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -570,22 +748,6 @@ export const StatTicker = () => {
 
     setBlockBars([bar1, bar2, bar3, bar4]);
   }, [blockHeight, blockUpdateTime]);
-
-  // Global Nodes Lottie: curves per concept doc §2–§3
-  // Curve 1 (node scale) | Curve 2 (health) | Curve 5 (stability) | Curve 6 (blend)
-  useEffect(() => {
-    const lottie = dotLottie4.current;
-    if (!lottie) return;
-
-    const nodeScale = Math.min(1, globalNodes / MAX_NODES);
-    const health = uptime / 100;
-    const stability = health;
-    const blend = nodeScale * 0.5 + health * 0.5;
-
-    const activity =
-      nodeScale * 0.25 + health * 0.3 + stability * 0.2 + blend * 0.25;
-    lottie.setSpeed(0.3 + activity * 1.7);
-  }, [globalNodes, uptime]);
 
   const fmt = (n: number) => n.toLocaleString();
 
@@ -658,6 +820,7 @@ export const StatTicker = () => {
         </div>
         <div
           className="relative w-full min-h-[100px] sm:min-h-[120px] flex items-center justify-between border border-white/10 py-3 pl-3 pr-2 sm:py-4 sm:pl-4 sm:pr-4"
+          style={{ paddingRight: NODES_CHART_SIZE + 12 }}
         >
           <div className="w-full min-w-0 flex flex-col gap-1 sm:gap-1.5 items-start font-sans">
             <div className="flex items-center gap-1.5 text-white/60">
@@ -673,15 +836,8 @@ export const StatTicker = () => {
               Uptime:{uptime.toFixed(2)}%
             </div>
           </div>
-          <div
-            className={`absolute -right-[74px] top-0 bottom-0`}
-          >
-            <DotLottieReact
-              data={JSON.stringify(InfoGraphic4)}
-              loop
-              autoplay
-              dotLottieRefCallback={(instance) => { dotLottie4.current = instance; }}
-            />
+          <div className="absolute right-0 top-0 bottom-0 flex items-center">
+            <GlobalNodesChart globalNodes={globalNodes} uptime={uptime} />
           </div>
         </div>
     </div>
