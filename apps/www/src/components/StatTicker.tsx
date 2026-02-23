@@ -278,7 +278,6 @@ const NetworkTpsChart = ({ tps, peakTps }: { tps: number; peakTps: number }) => 
   );
 };
 
-// Active Agents: circular chart — full circle visible (no clip), smooth animation synced to red variables
 const AGENTS_CHART_SIZE = 112;
 const AGENTS_CHART_ANIM_MS = 520;
 const AGENTS_MAIN_STROKE = 9;
