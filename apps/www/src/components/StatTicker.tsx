@@ -550,39 +550,121 @@ const ActiveAgentsChart = ({
   );
 };
 
-// Global Nodes: radial "network pulse" — 6 beams, each driven by the 2 variables per role (concept doc §2). No background.
-// Beam roles: 0 scale (nodes) | 1 health (uptime) | 2 magnitude (nodes) | 3 finer (nodes) | 4 stability (uptime) | 5 blend (both)
-const NODES_CHART_SIZE = 100;
+// Global Nodes: 8 thin neon curves with smooth glow — matching reference image exactly
+const NODES_CHART_WIDTH = 100;
+const NODES_CHART_HEIGHT = 110;
 const NODES_CHART_ANIM_MS = 360;
-const NODES_BEAM_COLORS = ["#06B6D4", "#10B981", "#8B5CF6", "#EAB308", "#F97316", "#EC4899"] as const;
-const NODES_MIN_RADIUS_PCT = 0.22;
-const NODES_BEAM_THICKNESS = 5;
-const NODES_GLOW_BLUR_MAX = 18;
+const NODES_CORE_LINE_WIDTH = 1.2;
+const NODES_GRID_COLOR = "rgba(100, 110, 120, 0.5)";
+const NODES_TICK_COLOR = "rgba(140, 150, 160, 0.7)";
+// Design colors: Top 4 (flattest→steepest): purple, light cyan, cyan, blue. Bottom 4: yellow, orange, red, pink/magenta.
+const NODES_SPLINE_COLORS = ["#A78BFA", "#67E8F9", "#22D3EE", "#38BDF8", "#FACC15", "#FB923C", "#F87171", "#F472B6"] as const;
 
-function computeNodesBeamLengths(globalNodes: number, uptime: number): number[] {
+function computeNodesSplineAmplitudes(globalNodes: number, uptime: number): number[] {
   const nodeScale = Math.min(1, globalNodes / MAX_NODES);
   const health = Math.min(1, Math.max(0, uptime / 100));
-  const magnitudeOffset = Math.min(1, Math.floor(globalNodes / 1000) / 10);
-  const finer = (globalNodes % 1000) / 1000;
-  const blend = nodeScale * 0.5 + health * 0.5;
-  return [nodeScale, health, magnitudeOffset, finer, health, blend];
+  // Return 8 values with good variation, all curves always visible
+  return [
+    0.7 + nodeScale * 0.3,
+    0.6 + health * 0.4,
+    0.65 + nodeScale * 0.35,
+    0.75 + health * 0.25,
+    0.7 + health * 0.3,
+    0.65 + nodeScale * 0.35,
+    0.6 + health * 0.4,
+    0.75 + nodeScale * 0.25,
+  ];
+}
+
+// Quadratic Bezier point at t: B(t) = (1-t)²P0 + 2(1-t)tP1 + t²P2
+function quadraticBezierPoint(
+  x0: number, y0: number, x1: number, y1: number, x2: number, y2: number, t: number,
+) {
+  const mt = 1 - t;
+  return {
+    x: mt * mt * x0 + 2 * mt * t * x1 + t * t * x2,
+    y: mt * mt * y0 + 2 * mt * t * y1 + t * t * y2,
+  };
+}
+
+// Draw partial quadratic from t=0 to t=endT (for growth/remove animation)
+function drawPartialQuadraticBezier(
+  ctx: CanvasRenderingContext2D,
+  x0: number, y0: number, x1: number, y1: number, x2: number, y2: number,
+  endT: number,
+) {
+  if (endT <= 0) return;
+  const steps = 32;
+  ctx.moveTo(x0, y0);
+  for (let k = 1; k <= steps; k++) {
+    const t = Math.min((k / steps) * endT, 1);
+    const p = quadraticBezierPoint(x0, y0, x1, y1, x2, y2, t);
+    ctx.lineTo(p.x, p.y);
+  }
+}
+
+// Draw one thin neon curve with subtle glow (thin bright core + soft colored halo)
+function drawNeonCurve(
+  ctx: CanvasRenderingContext2D,
+  x0: number, y0: number, x1: number, y1: number, x2: number, y2: number,
+  growth: number,
+  color: string,
+) {
+  if (growth <= 0) return;
+  const r = parseInt(color.slice(1, 3), 16);
+  const g = parseInt(color.slice(3, 5), 16);
+  const b = parseInt(color.slice(5, 7), 16);
+  const rgb = `${r}, ${g}, ${b}`;
+
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+
+  // Layer 1: Outer soft glow (subtle)
+  ctx.beginPath();
+  drawPartialQuadraticBezier(ctx, x0, y0, x1, y1, x2, y2, growth);
+  ctx.strokeStyle = `rgba(${rgb}, 0.08)`;
+  ctx.lineWidth = 8;
+  ctx.shadowColor = `rgba(${rgb}, 0.2)`;
+  ctx.shadowBlur = 8;
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  // Layer 2: Mid glow (subtle)
+  ctx.beginPath();
+  drawPartialQuadraticBezier(ctx, x0, y0, x1, y1, x2, y2, growth);
+  ctx.strokeStyle = `rgba(${rgb}, 0.2)`;
+  ctx.lineWidth = 4;
+  ctx.shadowColor = `rgba(${rgb}, 0.3)`;
+  ctx.shadowBlur = 4;
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  // Layer 3: Bright core (thin, full color)
+  ctx.beginPath();
+  drawPartialQuadraticBezier(ctx, x0, y0, x1, y1, x2, y2, growth);
+  ctx.strokeStyle = color;
+  ctx.lineWidth = NODES_CORE_LINE_WIDTH;
+  ctx.shadowColor = color;
+  ctx.shadowBlur = 2;
+  ctx.stroke();
+  ctx.shadowBlur = 0;
 }
 
 const GlobalNodesChart = ({ globalNodes, uptime }: { globalNodes: number; uptime: number }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const targetLengths = computeNodesBeamLengths(globalNodes, uptime);
+  const targetAmps = computeNodesSplineAmplitudes(globalNodes, uptime);
   const anim = useRef({
-    lengths: [...targetLengths],
-    from: [...targetLengths],
-    target: targetLengths,
+    amps: [...targetAmps],
+    from: [...targetAmps],
+    target: targetAmps,
     t0: 0,
     raf: 0,
   });
 
   useEffect(() => {
-    const next = computeNodesBeamLengths(globalNodes, uptime);
+    const next = computeNodesSplineAmplitudes(globalNodes, uptime);
     const s = anim.current;
-    s.from = [...s.lengths];
+    s.from = [...s.amps];
     s.target = next;
     s.t0 = performance.now();
     cancelAnimationFrame(s.raf);
@@ -597,65 +679,98 @@ const GlobalNodesChart = ({ globalNodes, uptime }: { globalNodes: number; uptime
       const t = Math.min(1, elapsed / NODES_CHART_ANIM_MS);
       const ease = 1 - (1 - t) ** 2.4;
 
-      for (let i = 0; i < 6; i++) {
-        s.lengths[i] = s.from[i] + (s.target[i] - s.from[i]) * ease;
+      for (let i = 0; i < 8; i++) {
+        s.amps[i] = s.from[i] + (s.target[i] - s.from[i]) * ease;
       }
 
-      const breath = 0.04 * Math.sin(now / 2800);
       const dpr = window.devicePixelRatio || 1;
-      const size = NODES_CHART_SIZE;
-      if (canvas.width !== size * dpr || canvas.height !== size * dpr) {
-        canvas.width = size * dpr;
-        canvas.height = size * dpr;
+      const w = NODES_CHART_WIDTH;
+      const h = NODES_CHART_HEIGHT;
+      if (canvas.width !== w * dpr || canvas.height !== h * dpr) {
+        canvas.width = w * dpr;
+        canvas.height = h * dpr;
       }
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      ctx.clearRect(0, 0, size, size);
+      ctx.clearRect(0, 0, w, h);
+      ctx.fillStyle = "#000";
+      ctx.fillRect(0, 0, w, h);
 
-      const cx = size / 2;
-      const cy = size / 2;
-      const maxR = size / 2 - 8;
-      const minR = maxR * NODES_MIN_RADIUS_PCT;
-      const angleStep = (2 * Math.PI) / 6;
-      const startAngle = -Math.PI / 2;
+      const padX = 4;
+      const tickW = 4;
+      const tickGap = 8; // Gap between tick marks and guide lines
+      const padY = 8;
+      const barLeft = padX + tickW + tickGap;
+      const barRight = w - 4;
+      const maxW = barRight - barLeft;
 
-      const breathPeriod = 1800;
-      const breathAmp = 0.16;
-      const glowPulse = 0.88 + 0.14 * Math.sin(now / 1400);
+      // Two halves: top 4 curves in upper half, bottom 4 in lower half
+      const centerY = h / 2;
+      const upperHalfH = centerY - padY;
+      const lowerHalfH = h - padY - centerY;
 
-      for (let i = 0; i < 6; i++) {
-        const raw = Math.max(0, Math.min(1, s.lengths[i]));
-        const beamPhase = (i / 6) * Math.PI * 2;
-        const breathI = breathAmp * Math.sin(now / breathPeriod + beamPhase);
-        const r = minR + (maxR - minR) * (raw * (1 + breathI));
-        const angle = startAngle + i * angleStep;
-        const ex = cx + r * Math.cos(angle);
-        const ey = cy + r * Math.sin(angle);
-
+      // Faint horizontal grid lines (design: subtle gray dashed lines)
+      const gridLineCount = 9;
+      const gridYs: number[] = [];
+      for (let g = 0; g < gridLineCount; g++) {
+        gridYs.push(padY + (g / (gridLineCount - 1)) * (h - 2 * padY));
+      }
+      ctx.strokeStyle = NODES_GRID_COLOR;
+      ctx.lineWidth = 1;
+      ctx.setLineDash([2, 3]);
+      for (const y of gridYs) {
         ctx.beginPath();
-        ctx.moveTo(cx, cy);
-        ctx.lineTo(ex, ey);
-        ctx.strokeStyle = NODES_BEAM_COLORS[i];
-        ctx.lineWidth = NODES_BEAM_THICKNESS;
-        ctx.lineCap = "round";
-        ctx.shadowColor = NODES_BEAM_COLORS[i];
-        ctx.shadowBlur = NODES_GLOW_BLUR_MAX * (0.4 + 0.6 * raw) * glowPulse;
+        ctx.moveTo(barLeft, y);
+        ctx.lineTo(barRight, y);
         ctx.stroke();
       }
-      ctx.shadowBlur = 0;
+      ctx.setLineDash([]);
 
-      const corePulse = 2.6 + 1.2 * Math.sin(now / 1200);
-      const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, corePulse * 3);
-      grad.addColorStop(0, "rgba(255,255,255,0.95)");
-      grad.addColorStop(0.4, "rgba(200,220,255,0.4)");
-      grad.addColorStop(1, "rgba(200,220,255,0)");
-      ctx.beginPath();
-      ctx.arc(cx, cy, corePulse * 3, 0, Math.PI * 2);
-      ctx.fillStyle = grad;
-      ctx.fill();
-      ctx.fillStyle = "rgba(255,255,255,0.9)";
-      ctx.beginPath();
-      ctx.arc(cx, cy, corePulse, 0, Math.PI * 2);
-      ctx.fill();
+      // Left tick marks (short dashes with gap before guide lines)
+      ctx.strokeStyle = NODES_TICK_COLOR;
+      ctx.lineWidth = 1.5;
+      for (const y of gridYs) {
+        ctx.beginPath();
+        ctx.moveTo(padX, y);
+        ctx.lineTo(padX + tickW, y);
+        ctx.stroke();
+      }
+
+      // All curves start at the left edge of guide lines (barLeft)
+      // Top 4: all start from top-left (first guide line), fan out down-right
+      const originTopY = gridYs[0]; // Start at first grid line
+      const topEndYs = [
+        gridYs[1],
+        gridYs[2],
+        gridYs[3],
+        gridYs[4] - 2,
+      ];
+      const topCtrlXRatios = [0.5, 0.4, 0.45, 0.5];
+      const topCtrlYBulges = [0.4, 0.35, 0.3, 0.25];
+      for (let i = 0; i < 4; i++) {
+        const growth = 0.3 + 0.7 * Math.max(0.1, Math.min(1, s.amps[i])); // Always show at least 30%
+        const endY = topEndYs[i];
+        const ctrlX = barLeft + maxW * topCtrlXRatios[i];
+        const ctrlY = originTopY + (endY - originTopY) * 0.5 + upperHalfH * topCtrlYBulges[i];
+        drawNeonCurve(ctx, barLeft, originTopY, ctrlX, ctrlY, barRight, endY, growth, NODES_SPLINE_COLORS[i]);
+      }
+
+      // Bottom 4: all start from bottom-left (last guide line), fan out up-right
+      const originBottomY = gridYs[gridYs.length - 1]; // Start at last grid line
+      const bottomEndYs = [
+        gridYs[4] + 2,
+        gridYs[5],
+        gridYs[6],
+        gridYs[7],
+      ];
+      const bottomCtrlXRatios = [0.5, 0.4, 0.45, 0.5];
+      const bottomCtrlYBulges = [0.25, 0.3, 0.35, 0.4];
+      for (let i = 0; i < 4; i++) {
+        const growth = 0.3 + 0.7 * Math.max(0.1, Math.min(1, s.amps[i + 4])); // Always show at least 30%
+        const endY = bottomEndYs[i];
+        const ctrlX = barLeft + maxW * bottomCtrlXRatios[i];
+        const ctrlY = originBottomY - (originBottomY - endY) * 0.5 - lowerHalfH * bottomCtrlYBulges[i];
+        drawNeonCurve(ctx, barLeft, originBottomY, ctrlX, ctrlY, barRight, endY, growth, NODES_SPLINE_COLORS[i + 4]);
+      }
 
       s.raf = requestAnimationFrame(paint);
     };
@@ -667,9 +782,9 @@ const GlobalNodesChart = ({ globalNodes, uptime }: { globalNodes: number; uptime
   return (
     <canvas
       ref={canvasRef}
-      style={{ width: NODES_CHART_SIZE, height: NODES_CHART_SIZE }}
+      style={{ width: NODES_CHART_WIDTH, height: NODES_CHART_HEIGHT, background: "#000" }}
       className="shrink-0"
-      aria-label={`Global nodes: ${globalNodes.toLocaleString()}, uptime ${uptime.toFixed(2)}%; radial chart shows scale, health, magnitude, finer scale, stability, and network state.`}
+      aria-label={`Global nodes: ${globalNodes.toLocaleString()}, uptime ${uptime.toFixed(2)}%; spline chart shows network state.`}
     />
   );
 };
@@ -795,7 +910,7 @@ export const StatTicker = () => {
         </div>
         <div
           className="relative w-full min-h-[100px] sm:min-h-[120px] flex items-center justify-between border border-white/10 py-3 pl-3 pr-2 sm:py-4 sm:pl-4 sm:pr-4"
-          style={{ paddingRight: NODES_CHART_SIZE + 12 }}
+          style={{ paddingRight: NODES_CHART_WIDTH + 12 }}
         >
           <div className="w-full min-w-0 flex flex-col gap-1 sm:gap-1.5 items-start font-sans">
             <div className="flex items-center gap-1.5 text-white/60">
