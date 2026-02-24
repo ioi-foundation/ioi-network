@@ -558,7 +558,7 @@ const NODES_CORE_LINE_WIDTH = 1.2;
 const NODES_GRID_COLOR = "rgba(100, 110, 120, 0.5)";
 const NODES_TICK_COLOR = "rgba(140, 150, 160, 0.7)";
 // Design colors: Top 4 (flattest→steepest): purple, light cyan, cyan, blue. Bottom 4: yellow, orange, red, pink/magenta.
-const NODES_SPLINE_COLORS = ["#A78BFA", "#67E8F9", "#22D3EE", "#38BDF8", "#FACC15", "#FB923C", "#F87171", "#F472B6"] as const;
+const NODES_SPLINE_COLORS = ["#6741b1", "#1796ec", "#0ac5ef", "#00fff0", "#fffc00", "#e90703", "#f22e7a", "#c503d4"] as const;
 
 function computeNodesSplineAmplitudes(globalNodes: number, uptime: number): number[] {
   const nodeScale = Math.min(1, globalNodes / MAX_NODES);
