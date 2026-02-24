@@ -107,10 +107,10 @@ const TPS_CHART_WIDTH = 100;
 const TPS_CHART_HEIGHT = 120;
 const TPS_CHART_ANIM_MS = 300;
 const TPS_BAR_COLOR = "#3FEAA1"; // vibrant green/cyan core
-const TPS_GLOW_COLOR = "rgba(35, 245, 174, 0.5)"; // cyan-green emissive glow
-const TPS_GLOW_HALO = "rgba(63, 234, 161, 0.7)"; // soft luminous halo
-const TPS_GRID_COLOR = "rgba(60, 70, 68, 0.6)"; // faint grey grid lines
-const TPS_TICK_COLOR = "rgba(120, 130, 128, 0.5)"; // subtle axis tick marks
+const TPS_GLOW_COLOR = "rgba(63, 234, 161, 0.8)"; // brighter cyan-green emissive glow
+const TPS_GLOW_HALO = "rgba(63, 234, 161, 0.5)"; // soft outer halo
+const TPS_GRID_COLOR = "rgba(80, 90, 88, 0.4)"; // faint grey grid lines
+const TPS_TICK_COLOR = "rgba(255, 255, 255)"; // subtle axis tick marks on right
 
 function computeTpsBars(tps: number, peakTps: number): number[] {
   const currentLoad = Math.min(100, (tps / MAX_TPS) * 100);
@@ -162,13 +162,14 @@ const NetworkTpsChart = ({ tps, peakTps }: { tps: number; peakTps: number }) => 
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, w, h);
 
-      const padX = 8;
-      const tickW = 4;
-      const maxW = w - padX * 2 - tickW;
+      const padX = 6;
+      const dotR = 2;
+      const dotGap = 6;
       const padY = 12;
       const lineSpacing = (h - 2 * padY) / (TPS_GUIDE_LINES - 1);
       const guideLineCenterY = (lineIndex: number) => padY + lineIndex * lineSpacing;
-      const barLeft = padX + tickW;
+      const barLeft = padX + dotR * 2 + dotGap;
+      const maxW = w - barLeft - padX;
 
       // Helper: draw a horizontal pill (semicircle caps) from barLeft to barLeft + barW at centerY
       const pillR = TPS_BAR_H / 2;
@@ -184,25 +185,24 @@ const NetworkTpsChart = ({ tps, peakTps }: { tps: number; peakTps: number }) => 
         ctx.closePath();
       };
 
-      // Grid: 8 faint horizontal guide lines + left axis tick marks
-      ctx.strokeStyle = TPS_GRID_COLOR;
-      ctx.lineWidth = 1;
-      ctx.setLineDash([3, 4]);
-      for (let i = 0; i < TPS_GUIDE_LINES; i++) {
-        const cy = guideLineCenterY(i);
-        ctx.beginPath();
-        ctx.moveTo(barLeft, cy);
-        ctx.lineTo(barLeft + maxW, cy);
-        ctx.stroke();
-      }
-      ctx.setLineDash([]);
+      // Left side short solid line markers (denotations) - positioned before guide lines
       ctx.strokeStyle = TPS_TICK_COLOR;
-      ctx.lineWidth = 1;
+      ctx.lineWidth = 1.5;
       for (let i = 0; i < TPS_GUIDE_LINES; i++) {
         const cy = guideLineCenterY(i);
         ctx.beginPath();
         ctx.moveTo(padX, cy);
-        ctx.lineTo(padX + tickW, cy);
+        ctx.lineTo(padX + 5, cy);
+        ctx.stroke();
+      }
+      // Grid: 8 solid horizontal guide lines (starting after dots)
+      ctx.strokeStyle = TPS_GRID_COLOR;
+      ctx.lineWidth = 1;
+      for (let i = 0; i < TPS_GUIDE_LINES; i++) {
+        const cy = guideLineCenterY(i);
+        ctx.beginPath();
+        ctx.moveTo(barLeft, cy);
+        ctx.lineTo(w - padX, cy);
         ctx.stroke();
       }
 
@@ -210,31 +210,34 @@ const NetworkTpsChart = ({ tps, peakTps }: { tps: number; peakTps: number }) => 
         const fillPct = Math.max(4, Math.min(100, s.cur[i]));
         const barW = (maxW * fillPct) / 100;
         const cy = guideLineCenterY(TPS_BAR_LINE_INDICES[i]);
-        // Revert direction: bar extends from right edge leftward (right-to-left growth)
+        // Bar grows from right to left
         const barStartX = barLeft + maxW - barW;
         if (barW > 0) {
-          // 1. Outer soft luminous halo (emissive glow)
+          // 1. Outer soft luminous halo (wide glow)
           ctx.shadowColor = TPS_GLOW_HALO;
-          ctx.shadowBlur = 20;
+          ctx.shadowBlur = 25;
           ctx.shadowOffsetX = 0;
           ctx.shadowOffsetY = 0;
-          ctx.fillStyle = TPS_GLOW_HALO;
+          ctx.fillStyle = "rgba(63, 234, 161, 0.25)";
           drawPill(barStartX, barW, cy);
           ctx.fill();
           ctx.shadowBlur = 0;
 
-          // 2. Inner glow (brighter cyan-green halo)
+          // 2. Inner bright glow
           ctx.shadowColor = TPS_GLOW_COLOR;
-          ctx.shadowBlur = 12;
-          ctx.fillStyle = "rgba(63, 234, 161, 0.5)";
+          ctx.shadowBlur = 15;
+          ctx.fillStyle = "rgba(63, 234, 161, 0.6)";
           drawPill(barStartX, barW, cy);
           ctx.fill();
           ctx.shadowBlur = 0;
 
-          // 3. Core bar (solid vibrant green/cyan)
+          // 3. Core bar (solid vibrant green/cyan) with tight glow
+          ctx.shadowColor = "#3FEAA1";
+          ctx.shadowBlur = 6;
           ctx.fillStyle = TPS_BAR_COLOR;
           drawPill(barStartX, barW, cy);
           ctx.fill();
+          ctx.shadowBlur = 0;
         }
       }
 
@@ -261,7 +264,7 @@ const AGENTS_RING_GAP = 6;
 const AGENTS_INNER_RING_THICKNESS = 6;
 const AGENTS_MARKER_R = 4.5;
 const AGENTS_CENTER_FONT = "500 18px system-ui, -apple-system, sans-serif";
-const AGENTS_GLOW_BLUR = 28;
+const AGENTS_GLOW_BLUR = 100;
 // Inset so outer ring + 12 o'clock dot are fully inside canvas (no cut)
 const AGENTS_SAFE_INSET = AGENTS_MAIN_STROKE / 2 + AGENTS_MARKER_R + 4;
 
@@ -277,7 +280,7 @@ const AGENTS_OUTER_GRADIENT_STOPS: [number, string][] = [
 const AGENTS_INNER_ARC = "#77ff60";
 const AGENTS_INNER_ARC_DARK = "rgba(22, 101, 52, 0.95)";
 const AGENTS_TRACK = "rgba(15, 23, 22, 0.95)";
-const AGENTS_GLOW = "rgba(119, 255, 96, 0.7)";
+const AGENTS_GLOW = "rgba(119, 255, 96, 0.85)";
 const AGENTS_MARKER_BLUE = "#0ac5ef";
 const AGENTS_MARKER_GREEN = "#77ff60";
 const AGENTS_MARKER_BORDER = "rgba(9, 27, 28, 0.95)";
@@ -474,11 +477,11 @@ const ActiveAgentsChart = ({
       // Inner ring (thickness): Segment 1 – total scale (green) + Segment 2 – growth (dark), with strong glow
       if (rInnerInner < rInnerOuter) {
         if (innerBrightSweep > 0) {
-          // Layer 1: Outer soft glow
+          // Layer 1: Wide outer soft glow
           drawRingSegment(ctx, cx, cy, rInnerOuter, rInnerInner, AGENTS_1, innerBrightEnd);
-          ctx.shadowColor = "rgba(119, 255, 96, 0.5)";
-          ctx.shadowBlur = 40;
-          ctx.fillStyle = "rgba(119, 255, 96, 0.3)";
+          ctx.shadowColor = "rgba(119, 255, 96, 0.6)";
+          ctx.shadowBlur = 55;
+          ctx.fillStyle = "rgba(119, 255, 96, 0.35)";
           ctx.fill();
           ctx.shadowBlur = 0;
 
@@ -563,7 +566,7 @@ const NODES_CHART_HEIGHT = 110;
 const NODES_CHART_ANIM_MS = 360;
 const NODES_CORE_LINE_WIDTH = 1.2;
 const NODES_GRID_COLOR = "rgba(100, 110, 120, 0.5)";
-const NODES_TICK_COLOR = "rgba(140, 150, 160, 0.7)";
+const NODES_TICK_COLOR = "rgba(255, 255, 255)";
 // Design colors: Top 4 (flattest→steepest): purple, light cyan, cyan, blue. Bottom 4: yellow, orange, red, pink/magenta.
 const NODES_SPLINE_COLORS = ["#6741b1", "#1796ec", "#0ac5ef", "#00fff0", "#fffc00", "#e90703", "#f22e7a", "#c503d4"] as const;
 
@@ -630,10 +633,8 @@ function drawNeonCurve(
   cx1: number, cy1: number,
   cx2: number, cy2: number,
   x3: number, y3: number,
-  growth: number,
   color: string,
 ) {
-  if (growth <= 0) return;
   const r = parseInt(color.slice(1, 3), 16);
   const g = parseInt(color.slice(3, 5), 16);
   const b = parseInt(color.slice(5, 7), 16);
@@ -642,9 +643,10 @@ function drawNeonCurve(
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
 
-  // Layer 1: Outer soft glow
+  // Layer 1: Outer soft glow - draw full curve
   ctx.beginPath();
-  drawPartialCubicBezier(ctx, x0, y0, cx1, cy1, cx2, cy2, x3, y3, growth);
+  ctx.moveTo(x0, y0);
+  ctx.bezierCurveTo(cx1, cy1, cx2, cy2, x3, y3);
   ctx.strokeStyle = `rgba(${rgb}, 0.08)`;
   ctx.lineWidth = 8;
   ctx.shadowColor = `rgba(${rgb}, 0.2)`;
@@ -652,9 +654,10 @@ function drawNeonCurve(
   ctx.stroke();
   ctx.shadowBlur = 0;
 
-  // Layer 2: Mid glow
+  // Layer 2: Mid glow - draw full curve
   ctx.beginPath();
-  drawPartialCubicBezier(ctx, x0, y0, cx1, cy1, cx2, cy2, x3, y3, growth);
+  ctx.moveTo(x0, y0);
+  ctx.bezierCurveTo(cx1, cy1, cx2, cy2, x3, y3);
   ctx.strokeStyle = `rgba(${rgb}, 0.2)`;
   ctx.lineWidth = 4;
   ctx.shadowColor = `rgba(${rgb}, 0.3)`;
@@ -662,9 +665,10 @@ function drawNeonCurve(
   ctx.stroke();
   ctx.shadowBlur = 0;
 
-  // Layer 3: Bright core
+  // Layer 3: Bright core - draw full curve
   ctx.beginPath();
-  drawPartialCubicBezier(ctx, x0, y0, cx1, cy1, cx2, cy2, x3, y3, growth);
+  ctx.moveTo(x0, y0);
+  ctx.bezierCurveTo(cx1, cy1, cx2, cy2, x3, y3);
   ctx.strokeStyle = color;
   ctx.lineWidth = NODES_CORE_LINE_WIDTH;
   ctx.shadowColor = color;
@@ -726,30 +730,30 @@ const GlobalNodesChart = ({ globalNodes, uptime }: { globalNodes: number; uptime
       const barRight = w - 4;
       const maxW = barRight - barLeft;
 
-      // Faint horizontal grid lines (design: subtle gray dashed lines)
+      // Grid lines
       const gridLineCount = 9;
       const gridYs: number[] = [];
       for (let g = 0; g < gridLineCount; g++) {
         gridYs.push(padY + (g / (gridLineCount - 1)) * (h - 2 * padY));
       }
-      ctx.strokeStyle = NODES_GRID_COLOR;
-      ctx.lineWidth = 1;
-      ctx.setLineDash([2, 3]);
-      for (const y of gridYs) {
-        ctx.beginPath();
-        ctx.moveTo(barLeft, y);
-        ctx.lineTo(barRight, y);
-        ctx.stroke();
-      }
-      ctx.setLineDash([]);
-
-      // Left tick marks (short dashes with gap before guide lines)
+      
+      // Left side short solid line markers (denotations) - positioned before guide lines
       ctx.strokeStyle = NODES_TICK_COLOR;
       ctx.lineWidth = 1.5;
       for (const y of gridYs) {
         ctx.beginPath();
         ctx.moveTo(padX, y);
-        ctx.lineTo(padX + tickW, y);
+        ctx.lineTo(padX + 5, y);
+        ctx.stroke();
+      }
+      
+      // Solid horizontal guide lines (starting after denotations)
+      ctx.strokeStyle = NODES_GRID_COLOR;
+      ctx.lineWidth = 1;
+      for (const y of gridYs) {
+        ctx.beginPath();
+        ctx.moveTo(barLeft, y);
+        ctx.lineTo(barRight, y);
         ctx.stroke();
       }
 
@@ -771,18 +775,20 @@ const GlobalNodesChart = ({ globalNodes, uptime }: { globalNodes: number; uptime
         { c1x: 0.35, c1y: 0.0, c2x: 0.65, c2y: 1.0 },   // Blue: widest S
       ];
       for (let i = 0; i < 4; i++) {
-        // Growth from amplitude + subtle pulse for continuous animation
-        const pulse = Math.sin(now / 1000 + i * 0.8) * 0.06;
-        const growth = Math.max(0.4, Math.min(1, s.amps[i] + pulse));
-        const endY = topEndYs[i];
+        // Data-driven deformation: amplitude controls how far the curve bends
+        // Stronger pulse for visible continuous animation
+        const pulse = Math.sin(now / 800 + i * 1.2) * 0.15;
+        const deform = Math.max(0.2, Math.min(1, s.amps[i] + pulse));
+        const targetEndY = topEndYs[i];
+        // Interpolate endpoint Y between origin and target based on deformation
+        const endY = originTopY + (targetEndY - originTopY) * deform;
         const p = topCurveParams[i];
-        // c1: early X, same Y as origin = flat start
+        // Control points also deform proportionally
         const cx1 = barLeft + maxW * p.c1x;
         const cy1 = originTopY + (endY - originTopY) * p.c1y;
-        // c2: late X, same Y as end = flat approach to end
         const cx2 = barLeft + maxW * p.c2x;
         const cy2 = originTopY + (endY - originTopY) * p.c2y;
-        drawNeonCurve(ctx, barLeft, originTopY, cx1, cy1, cx2, cy2, barRight, endY, growth, NODES_SPLINE_COLORS[i]);
+        drawNeonCurve(ctx, barLeft, originTopY, cx1, cy1, cx2, cy2, barRight, endY, NODES_SPLINE_COLORS[i]);
       }
 
       // Bottom 4: all start from bottom-left (last guide line), fan out up-right
@@ -797,18 +803,20 @@ const GlobalNodesChart = ({ globalNodes, uptime }: { globalNodes: number; uptime
         { c1x: 0.45, c1y: 0.0, c2x: 0.55, c2y: 1.0 },   // Pink: S in center
       ];
       for (let i = 0; i < 4; i++) {
-        // Growth from amplitude + subtle pulse for continuous animation
-        const pulse = Math.sin(now / 1000 + (i + 4) * 0.8) * 0.06;
-        const growth = Math.max(0.4, Math.min(1, s.amps[i + 4] + pulse));
-        const endY = bottomEndYs[i];
+        // Data-driven deformation: amplitude controls how far the curve bends
+        // Stronger pulse for visible continuous animation
+        const pulse = Math.sin(now / 800 + (i + 4) * 1.2) * 0.15;
+        const deform = Math.max(0.2, Math.min(1, s.amps[i + 4] + pulse));
+        const targetEndY = bottomEndYs[i];
+        // Interpolate endpoint Y between origin and target based on deformation
+        const endY = originBottomY + (targetEndY - originBottomY) * deform;
         const p = bottomCurveParams[i];
-        // c1: early X, same Y as origin = flat start
+        // Control points also deform proportionally
         const cx1 = barLeft + maxW * p.c1x;
         const cy1 = originBottomY - (originBottomY - endY) * p.c1y;
-        // c2: late X, same Y as end = flat approach to end
         const cx2 = barLeft + maxW * p.c2x;
         const cy2 = originBottomY - (originBottomY - endY) * p.c2y;
-        drawNeonCurve(ctx, barLeft, originBottomY, cx1, cy1, cx2, cy2, barRight, endY, growth, NODES_SPLINE_COLORS[i + 4]);
+        drawNeonCurve(ctx, barLeft, originBottomY, cx1, cy1, cx2, cy2, barRight, endY, NODES_SPLINE_COLORS[i + 4]);
       }
 
       s.raf = requestAnimationFrame(paint);
