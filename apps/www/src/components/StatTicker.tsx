@@ -261,27 +261,25 @@ const AGENTS_RING_GAP = 6;
 const AGENTS_INNER_RING_THICKNESS = 6;
 const AGENTS_MARKER_R = 4.5;
 const AGENTS_CENTER_FONT = "500 18px system-ui, -apple-system, sans-serif";
-const AGENTS_GLOW_BLUR = 20;
+const AGENTS_GLOW_BLUR = 28;
 // Inset so outer ring + 12 o'clock dot are fully inside canvas (no cut)
 const AGENTS_SAFE_INSET = AGENTS_MAIN_STROKE / 2 + AGENTS_MARKER_R + 4;
 
-// Outer ring: full-circle conic gradient (light blue → purple → pink → red → orange → blue/teal), 12 o'clock = 0
+// Outer ring: conic gradient (cyan top → green right → orange bottom → magenta left)
 const AGENTS_OUTER_GRADIENT_STOPS: [number, string][] = [
-  [0, "#7DD3FC"],
-  [0.18, "#A78BFA"],
-  [0.35, "#F472B6"],
-  [0.52, "#F87171"],
-  [0.7, "#FB923C"],
-  [0.88, "#38BDF8"],
-  [1, "#7DD3FC"],
+  [0, "#0ac5ef"],      // Cyan at 12 o'clock (top)
+  [0.25, "#77ff60"],   // Bright green at 3 o'clock (right)
+  [0.5, "#e78d54"],    // Orange at 6 o'clock (bottom)
+  [0.75, "#cc269d"],   // Magenta at 9 o'clock (left)
+  [1, "#0ac5ef"],      // Back to cyan (top)
 ];
 // Inner ring: bright neon green (main fill) + dark trailing segment (growth)
-const AGENTS_INNER_ARC = "#4ADE80";
+const AGENTS_INNER_ARC = "#77ff60";
 const AGENTS_INNER_ARC_DARK = "rgba(22, 101, 52, 0.95)";
 const AGENTS_TRACK = "rgba(15, 23, 22, 0.95)";
-const AGENTS_GLOW = "rgba(74, 222, 128, 0.35)";
-const AGENTS_MARKER_BLUE = "#38BDF8";
-const AGENTS_MARKER_GREEN = "#4ADE80";
+const AGENTS_GLOW = "rgba(119, 255, 96, 0.7)";
+const AGENTS_MARKER_BLUE = "#0ac5ef";
+const AGENTS_MARKER_GREEN = "#77ff60";
 const AGENTS_MARKER_BORDER = "rgba(9, 27, 28, 0.95)";
 
 // Angles: 12 o'clock = -π/2. Green arc runs 1 o'clock → 7 o'clock (180°); growth dark segment at end.
@@ -443,7 +441,7 @@ const ActiveAgentsChart = ({
 
       // Outer ring (Segment 1 – Total scale): gradient arc animated by count/max, fills 0–100% of circle (with soft glow)
       if (outerSweep > 0.02) {
-        ctx.shadowColor = "rgba(125, 211, 252, 0.5)";
+        ctx.shadowColor = "rgba(10, 197, 239, 0.5)";
         ctx.shadowBlur = 12;
         let gradientStyle: CanvasGradient | string = AGENTS_OUTER_GRADIENT_STOPS[0][1];
         const createConic = (ctx as CanvasRenderingContext2D & { createConicGradient?(startAngle: number, x: number, y: number): CanvasGradient }).createConicGradient;
@@ -473,16 +471,25 @@ const ActiveAgentsChart = ({
       ctx.stroke();
       ctx.shadowBlur = 0;
 
-      // Inner ring (thickness): Segment 1 – total scale (green) + Segment 2 – growth (dark), both with shadow
+      // Inner ring (thickness): Segment 1 – total scale (green) + Segment 2 – growth (dark), with strong glow
       if (rInnerInner < rInnerOuter) {
         if (innerBrightSweep > 0) {
+          // Layer 1: Outer soft glow
+          drawRingSegment(ctx, cx, cy, rInnerOuter, rInnerInner, AGENTS_1, innerBrightEnd);
+          ctx.shadowColor = "rgba(119, 255, 96, 0.5)";
+          ctx.shadowBlur = 40;
+          ctx.fillStyle = "rgba(119, 255, 96, 0.3)";
+          ctx.fill();
+          ctx.shadowBlur = 0;
+
+          // Layer 2: Inner bright glow
           drawRingSegment(ctx, cx, cy, rInnerOuter, rInnerInner, AGENTS_1, innerBrightEnd);
           ctx.shadowColor = AGENTS_GLOW;
           ctx.shadowBlur = AGENTS_GLOW_BLUR;
           ctx.fillStyle = AGENTS_INNER_ARC;
           ctx.fill();
-          ctx.strokeStyle = "rgba(74, 222, 128, 0.5)";
-          ctx.lineWidth = 1;
+          ctx.strokeStyle = "rgba(119, 255, 96, 0.6)";
+          ctx.lineWidth = 1.5;
           ctx.stroke();
           ctx.shadowBlur = 0;
         }
