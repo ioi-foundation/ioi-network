@@ -563,50 +563,66 @@ const NODES_SPLINE_COLORS = ["#6741b1", "#1796ec", "#0ac5ef", "#00fff0", "#fffc0
 function computeNodesSplineAmplitudes(globalNodes: number, uptime: number): number[] {
   const nodeScale = Math.min(1, globalNodes / MAX_NODES);
   const health = Math.min(1, Math.max(0, uptime / 100));
-  // Return 8 values with good variation, all curves always visible
+  // All 8 curves visible, length varies from 0.45 to 1.0 based on variables
+  // Minimum size increased so short curves are clearly visible
   return [
-    0.7 + nodeScale * 0.3,
-    0.6 + health * 0.4,
-    0.65 + nodeScale * 0.35,
-    0.75 + health * 0.25,
-    0.7 + health * 0.3,
-    0.65 + nodeScale * 0.35,
-    0.6 + health * 0.4,
-    0.75 + nodeScale * 0.25,
+    0.45 + nodeScale * 0.55,         // Purple: driven by nodes
+    0.45 + health * 0.55,            // Light cyan: driven by health
+    0.5 + nodeScale * 0.5,           // Cyan: driven by nodes
+    0.45 + health * 0.55,            // Blue: driven by health
+    0.45 + health * 0.55,            // Yellow: driven by health
+    0.5 + nodeScale * 0.5,           // Orange: driven by nodes
+    0.45 + health * 0.55,            // Red: driven by health
+    0.45 + nodeScale * 0.55,         // Pink: driven by nodes
   ];
 }
 
-// Quadratic Bezier point at t: B(t) = (1-t)²P0 + 2(1-t)tP1 + t²P2
-function quadraticBezierPoint(
-  x0: number, y0: number, x1: number, y1: number, x2: number, y2: number, t: number,
+// Cubic Bezier point at t: B(t) = (1-t)³P0 + 3(1-t)²tP1 + 3(1-t)t²P2 + t³P3
+// This creates S-curve shapes: start flat → bend → end flat
+function cubicBezierPoint(
+  x0: number, y0: number,
+  cx1: number, cy1: number,
+  cx2: number, cy2: number,
+  x3: number, y3: number,
+  t: number,
 ) {
   const mt = 1 - t;
+  const mt2 = mt * mt;
+  const mt3 = mt2 * mt;
+  const t2 = t * t;
+  const t3 = t2 * t;
   return {
-    x: mt * mt * x0 + 2 * mt * t * x1 + t * t * x2,
-    y: mt * mt * y0 + 2 * mt * t * y1 + t * t * y2,
+    x: mt3 * x0 + 3 * mt2 * t * cx1 + 3 * mt * t2 * cx2 + t3 * x3,
+    y: mt3 * y0 + 3 * mt2 * t * cy1 + 3 * mt * t2 * cy2 + t3 * y3,
   };
 }
 
-// Draw partial quadratic from t=0 to t=endT (for growth/remove animation)
-function drawPartialQuadraticBezier(
+// Draw partial cubic bezier from t=0 to t=endT (S-curve for natural look)
+function drawPartialCubicBezier(
   ctx: CanvasRenderingContext2D,
-  x0: number, y0: number, x1: number, y1: number, x2: number, y2: number,
+  x0: number, y0: number,
+  cx1: number, cy1: number,
+  cx2: number, cy2: number,
+  x3: number, y3: number,
   endT: number,
 ) {
   if (endT <= 0) return;
-  const steps = 32;
+  const steps = 40;
   ctx.moveTo(x0, y0);
   for (let k = 1; k <= steps; k++) {
     const t = Math.min((k / steps) * endT, 1);
-    const p = quadraticBezierPoint(x0, y0, x1, y1, x2, y2, t);
+    const p = cubicBezierPoint(x0, y0, cx1, cy1, cx2, cy2, x3, y3, t);
     ctx.lineTo(p.x, p.y);
   }
 }
 
-// Draw one thin neon curve with subtle glow (thin bright core + soft colored halo)
+// Draw one S-curve neon line with subtle glow
 function drawNeonCurve(
   ctx: CanvasRenderingContext2D,
-  x0: number, y0: number, x1: number, y1: number, x2: number, y2: number,
+  x0: number, y0: number,
+  cx1: number, cy1: number,
+  cx2: number, cy2: number,
+  x3: number, y3: number,
   growth: number,
   color: string,
 ) {
@@ -619,9 +635,9 @@ function drawNeonCurve(
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
 
-  // Layer 1: Outer soft glow (subtle)
+  // Layer 1: Outer soft glow
   ctx.beginPath();
-  drawPartialQuadraticBezier(ctx, x0, y0, x1, y1, x2, y2, growth);
+  drawPartialCubicBezier(ctx, x0, y0, cx1, cy1, cx2, cy2, x3, y3, growth);
   ctx.strokeStyle = `rgba(${rgb}, 0.08)`;
   ctx.lineWidth = 8;
   ctx.shadowColor = `rgba(${rgb}, 0.2)`;
@@ -629,9 +645,9 @@ function drawNeonCurve(
   ctx.stroke();
   ctx.shadowBlur = 0;
 
-  // Layer 2: Mid glow (subtle)
+  // Layer 2: Mid glow
   ctx.beginPath();
-  drawPartialQuadraticBezier(ctx, x0, y0, x1, y1, x2, y2, growth);
+  drawPartialCubicBezier(ctx, x0, y0, cx1, cy1, cx2, cy2, x3, y3, growth);
   ctx.strokeStyle = `rgba(${rgb}, 0.2)`;
   ctx.lineWidth = 4;
   ctx.shadowColor = `rgba(${rgb}, 0.3)`;
@@ -639,9 +655,9 @@ function drawNeonCurve(
   ctx.stroke();
   ctx.shadowBlur = 0;
 
-  // Layer 3: Bright core (thin, full color)
+  // Layer 3: Bright core
   ctx.beginPath();
-  drawPartialQuadraticBezier(ctx, x0, y0, x1, y1, x2, y2, growth);
+  drawPartialCubicBezier(ctx, x0, y0, cx1, cy1, cx2, cy2, x3, y3, growth);
   ctx.strokeStyle = color;
   ctx.lineWidth = NODES_CORE_LINE_WIDTH;
   ctx.shadowColor = color;
@@ -703,11 +719,6 @@ const GlobalNodesChart = ({ globalNodes, uptime }: { globalNodes: number; uptime
       const barRight = w - 4;
       const maxW = barRight - barLeft;
 
-      // Two halves: top 4 curves in upper half, bottom 4 in lower half
-      const centerY = h / 2;
-      const upperHalfH = centerY - padY;
-      const lowerHalfH = h - padY - centerY;
-
       // Faint horizontal grid lines (design: subtle gray dashed lines)
       const gridLineCount = 9;
       const gridYs: number[] = [];
@@ -735,41 +746,62 @@ const GlobalNodesChart = ({ globalNodes, uptime }: { globalNodes: number; uptime
         ctx.stroke();
       }
 
-      // All curves start at the left edge of guide lines (barLeft)
+      // All curves show COMPLETE S-curve within graphic width:
+      // flat start → curve in middle → flat approach to end
+      // S-curve intensity increases toward center
+      
       // Top 4: all start from top-left (first guide line), fan out down-right
-      const originTopY = gridYs[0]; // Start at first grid line
-      const topEndYs = [
-        gridYs[1],
-        gridYs[2],
-        gridYs[3],
-        gridYs[4] - 2,
+      // Leave gap in the center between top and bottom curves
+      const originTopY = gridYs[0];
+      const centerGap = 8;
+      const topEndYs = [gridYs[1], gridYs[2], gridYs[3], gridYs[4] - centerGap];
+      // S-curve concentrated in middle: flat left → S in center → flat right
+      // Purple (gentle) → Blue (sharp)
+      const topCurveParams = [
+        { c1x: 0.45, c1y: 0.0, c2x: 0.55, c2y: 1.0 },   // Purple: S in center
+        { c1x: 0.42, c1y: 0.0, c2x: 0.58, c2y: 1.0 },   // Light cyan: slightly wider S
+        { c1x: 0.38, c1y: 0.0, c2x: 0.62, c2y: 1.0 },   // Cyan: wider S
+        { c1x: 0.35, c1y: 0.0, c2x: 0.65, c2y: 1.0 },   // Blue: widest S
       ];
-      const topCtrlXRatios = [0.5, 0.4, 0.45, 0.5];
-      const topCtrlYBulges = [0.4, 0.35, 0.3, 0.25];
       for (let i = 0; i < 4; i++) {
-        const growth = 0.3 + 0.7 * Math.max(0.1, Math.min(1, s.amps[i])); // Always show at least 30%
+        // Growth from amplitude + subtle pulse for continuous animation
+        const pulse = Math.sin(now / 1000 + i * 0.8) * 0.06;
+        const growth = Math.max(0.4, Math.min(1, s.amps[i] + pulse));
         const endY = topEndYs[i];
-        const ctrlX = barLeft + maxW * topCtrlXRatios[i];
-        const ctrlY = originTopY + (endY - originTopY) * 0.5 + upperHalfH * topCtrlYBulges[i];
-        drawNeonCurve(ctx, barLeft, originTopY, ctrlX, ctrlY, barRight, endY, growth, NODES_SPLINE_COLORS[i]);
+        const p = topCurveParams[i];
+        // c1: early X, same Y as origin = flat start
+        const cx1 = barLeft + maxW * p.c1x;
+        const cy1 = originTopY + (endY - originTopY) * p.c1y;
+        // c2: late X, same Y as end = flat approach to end
+        const cx2 = barLeft + maxW * p.c2x;
+        const cy2 = originTopY + (endY - originTopY) * p.c2y;
+        drawNeonCurve(ctx, barLeft, originTopY, cx1, cy1, cx2, cy2, barRight, endY, growth, NODES_SPLINE_COLORS[i]);
       }
 
       // Bottom 4: all start from bottom-left (last guide line), fan out up-right
-      const originBottomY = gridYs[gridYs.length - 1]; // Start at last grid line
-      const bottomEndYs = [
-        gridYs[4] + 2,
-        gridYs[5],
-        gridYs[6],
-        gridYs[7],
+      // Leave gap in the center between top and bottom curves
+      const originBottomY = gridYs[gridYs.length - 1];
+      const bottomEndYs = [gridYs[4] + centerGap, gridYs[5], gridYs[6], gridYs[7]];
+      // Yellow (widest S) → Pink (S in center)
+      const bottomCurveParams = [
+        { c1x: 0.35, c1y: 0.0, c2x: 0.65, c2y: 1.0 },   // Yellow: widest S
+        { c1x: 0.38, c1y: 0.0, c2x: 0.62, c2y: 1.0 },   // Orange: wider S
+        { c1x: 0.42, c1y: 0.0, c2x: 0.58, c2y: 1.0 },   // Red: slightly wider S
+        { c1x: 0.45, c1y: 0.0, c2x: 0.55, c2y: 1.0 },   // Pink: S in center
       ];
-      const bottomCtrlXRatios = [0.5, 0.4, 0.45, 0.5];
-      const bottomCtrlYBulges = [0.25, 0.3, 0.35, 0.4];
       for (let i = 0; i < 4; i++) {
-        const growth = 0.3 + 0.7 * Math.max(0.1, Math.min(1, s.amps[i + 4])); // Always show at least 30%
+        // Growth from amplitude + subtle pulse for continuous animation
+        const pulse = Math.sin(now / 1000 + (i + 4) * 0.8) * 0.06;
+        const growth = Math.max(0.4, Math.min(1, s.amps[i + 4] + pulse));
         const endY = bottomEndYs[i];
-        const ctrlX = barLeft + maxW * bottomCtrlXRatios[i];
-        const ctrlY = originBottomY - (originBottomY - endY) * 0.5 - lowerHalfH * bottomCtrlYBulges[i];
-        drawNeonCurve(ctx, barLeft, originBottomY, ctrlX, ctrlY, barRight, endY, growth, NODES_SPLINE_COLORS[i + 4]);
+        const p = bottomCurveParams[i];
+        // c1: early X, same Y as origin = flat start
+        const cx1 = barLeft + maxW * p.c1x;
+        const cy1 = originBottomY - (originBottomY - endY) * p.c1y;
+        // c2: late X, same Y as end = flat approach to end
+        const cx2 = barLeft + maxW * p.c2x;
+        const cy2 = originBottomY - (originBottomY - endY) * p.c2y;
+        drawNeonCurve(ctx, barLeft, originBottomY, cx1, cy1, cx2, cy2, barRight, endY, growth, NODES_SPLINE_COLORS[i + 4]);
       }
 
       s.raf = requestAnimationFrame(paint);
