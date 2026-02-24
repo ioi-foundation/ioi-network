@@ -98,36 +98,25 @@ const BlockHeightChart = ({
   );
 };
 
-// Network TPS: 8 horizontal bars — professional pill-style bars, layered glow, subtle grid
-const TPS_CHART_BARS = 8;
-const TPS_BAR_H = 4; // pill height (capsule-style bars)
-const TPS_CHART_GAP = 8;
+// Network TPS: 8 guide lines, 3 bars on 3rd / 5th / 7th lines — pill-style bars, luminous glow
+const TPS_CHART_BARS = 3;
+const TPS_GUIDE_LINES = 8;
+const TPS_BAR_LINE_INDICES = [2, 4, 6]; // 1-based: 3rd, 5th, 7th guide lines
+const TPS_BAR_H = 5; // pill height — slightly thicker for visibility
 const TPS_CHART_WIDTH = 100;
-const TPS_CHART_HEIGHT = 115;
+const TPS_CHART_HEIGHT = 120;
 const TPS_CHART_ANIM_MS = 300;
-const TPS_BAR_COLOR = "#3FEAA1";
+const TPS_BAR_COLOR = "#3FEAA1"; // vibrant green/cyan core
+const TPS_GLOW_COLOR = "rgba(35, 245, 174, 0.5)"; // cyan-green emissive glow
+const TPS_GLOW_HALO = "rgba(63, 234, 161, 0.7)"; // soft luminous halo
 const TPS_GRID_COLOR = "rgba(60, 70, 68, 0.6)"; // faint grey grid lines
 const TPS_TICK_COLOR = "rgba(120, 130, 128, 0.5)"; // subtle axis tick marks
 
 function computeTpsBars(tps: number, peakTps: number): number[] {
   const currentLoad = Math.min(100, (tps / MAX_TPS) * 100);
-  const peakRef = Math.min(100, (peakTps / MAX_TPS) * 100);
   const utilization = peakTps > 0 ? Math.min(100, (tps / peakTps) * 100) : 0;
-  const headroom = 100 - utilization;
-  const currentThousands = Math.min(100, Math.floor(tps / 1000) * 10);
-  const currentHundreds = (tps % 1000) / 10;
-  const peakThousands = Math.min(100, Math.floor(peakTps / 1000) * 10);
-  const peakHundreds = (peakTps % 1000) / 10;
-  return [
-    currentLoad,
-    peakRef,
-    utilization,
-    headroom,
-    currentThousands,
-    currentHundreds,
-    peakThousands,
-    peakHundreds,
-  ];
+  const peakRef = Math.min(100, (peakTps / MAX_TPS) * 100);
+  return [currentLoad, utilization, peakRef];
 }
 
 const NetworkTpsChart = ({ tps, peakTps }: { tps: number; peakTps: number }) => {
@@ -176,8 +165,9 @@ const NetworkTpsChart = ({ tps, peakTps }: { tps: number; peakTps: number }) => 
       const padX = 8;
       const tickW = 4;
       const maxW = w - padX * 2 - tickW;
-      const totalBarsH = TPS_BAR_H * TPS_CHART_BARS + TPS_CHART_GAP * (TPS_CHART_BARS - 1);
-      const padY = (h - totalBarsH) / 2;
+      const padY = 12;
+      const lineSpacing = (h - 2 * padY) / (TPS_GUIDE_LINES - 1);
+      const guideLineCenterY = (lineIndex: number) => padY + lineIndex * lineSpacing;
       const barLeft = padX + tickW;
 
       // Helper: draw a horizontal pill (semicircle caps) from barLeft to barLeft + barW at centerY
@@ -194,15 +184,12 @@ const NetworkTpsChart = ({ tps, peakTps }: { tps: number; peakTps: number }) => 
         ctx.closePath();
       };
 
-      const barCenterY = (i: number) =>
-        padY + i * (TPS_BAR_H + TPS_CHART_GAP) + TPS_BAR_H / 2;
-
-      // Grid: faint horizontal lines + left axis tick marks
+      // Grid: 8 faint horizontal guide lines + left axis tick marks
       ctx.strokeStyle = TPS_GRID_COLOR;
       ctx.lineWidth = 1;
       ctx.setLineDash([3, 4]);
-      for (let i = 0; i < TPS_CHART_BARS; i++) {
-        const cy = barCenterY(i);
+      for (let i = 0; i < TPS_GUIDE_LINES; i++) {
+        const cy = guideLineCenterY(i);
         ctx.beginPath();
         ctx.moveTo(barLeft, cy);
         ctx.lineTo(barLeft + maxW, cy);
@@ -211,53 +198,42 @@ const NetworkTpsChart = ({ tps, peakTps }: { tps: number; peakTps: number }) => 
       ctx.setLineDash([]);
       ctx.strokeStyle = TPS_TICK_COLOR;
       ctx.lineWidth = 1;
-      for (let i = 0; i < TPS_CHART_BARS; i++) {
-        const cy = barCenterY(i);
+      for (let i = 0; i < TPS_GUIDE_LINES; i++) {
+        const cy = guideLineCenterY(i);
         ctx.beginPath();
         ctx.moveTo(padX, cy);
         ctx.lineTo(padX + tickW, cy);
         ctx.stroke();
       }
 
-      // Shadow offset so the cast shadow is clearly visible behind each bar
-      const TPS_SHADOW_OFFSET_X = 3;
-      const TPS_SHADOW_OFFSET_Y = 3;
-
-      // Bars: pill-shaped with visible cast shadow + glow + core
       for (let i = 0; i < TPS_CHART_BARS; i++) {
         const fillPct = Math.max(4, Math.min(100, s.cur[i]));
         const barW = (maxW * fillPct) / 100;
-        const cy = barCenterY(i);
+        const cy = guideLineCenterY(TPS_BAR_LINE_INDICES[i]);
+        // Revert direction: bar extends from right edge leftward (right-to-left growth)
+        const barStartX = barLeft + maxW - barW;
         if (barW > 0) {
-          // 1. Cast shadow: offset pill in dark color (visible on black) + soft blur
-          ctx.shadowColor = "rgba(0, 0, 0, 0.7)";
-          ctx.shadowBlur = 8;
+          // 1. Outer soft luminous halo (emissive glow)
+          ctx.shadowColor = TPS_GLOW_HALO;
+          ctx.shadowBlur = 20;
           ctx.shadowOffsetX = 0;
           ctx.shadowOffsetY = 0;
-          ctx.fillStyle = "rgba(15, 25, 22, 0.85)";
-          drawPill(barLeft + TPS_SHADOW_OFFSET_X, barW, cy + TPS_SHADOW_OFFSET_Y);
+          ctx.fillStyle = TPS_GLOW_HALO;
+          drawPill(barStartX, barW, cy);
           ctx.fill();
           ctx.shadowBlur = 0;
 
-          // 2. Outer soft halo (glow)
-          ctx.shadowColor = "rgba(63, 234, 161, 0.35)";
-          ctx.shadowBlur = 14;
-          ctx.fillStyle = "rgba(63, 234, 161, 0.45)";
-          drawPill(barLeft, barW, cy);
+          // 2. Inner glow (brighter cyan-green halo)
+          ctx.shadowColor = TPS_GLOW_COLOR;
+          ctx.shadowBlur = 12;
+          ctx.fillStyle = "rgba(63, 234, 161, 0.5)";
+          drawPill(barStartX, barW, cy);
           ctx.fill();
           ctx.shadowBlur = 0;
 
-          // 3. Inner glow
-          ctx.shadowColor = "rgba(63, 234, 161, 0.55)";
-          ctx.shadowBlur = 8;
-          ctx.fillStyle = "rgba(63, 234, 161, 0.55)";
-          drawPill(barLeft, barW, cy);
-          ctx.fill();
-          ctx.shadowBlur = 0;
-
-          // 4. Core bar (solid)
+          // 3. Core bar (solid vibrant green/cyan)
           ctx.fillStyle = TPS_BAR_COLOR;
-          drawPill(barLeft, barW, cy);
+          drawPill(barStartX, barW, cy);
           ctx.fill();
         }
       }
