@@ -34,8 +34,8 @@ export const NetworkHeader = ({ currentAppId, className = '' }: NetworkHeaderPro
         {/* App Links (Desktop) */}
         <div className="hidden md:flex items-center gap-1">
           {IOI_APPS.map((app) => {
-            // Skip the "Gateway" (www) in the quick switcher, show specific apps
-            if (app.id === 'www') return null;
+            // Skip apps that should not appear in the persistent top nav.
+            if (app.id === 'www' || app.id === 'studio') return null;
             
             const isActive = app.id === currentAppId;
             const Icon = app.icon;

@@ -6,7 +6,7 @@ import { Copy, Check } from 'lucide-react';
 import { SIDEBAR_DATA } from './core/constants';
 import { checkContentIntegrity, flattenDocs, SyncResult } from './core/utils';
 import { DocsLayout } from './layout/DocsLayout';
-import { DocsSidebar } from './features/navigation/DocsSidebar';
+import { buildDocsSidebarGroups } from './features/navigation/DocsSidebar';
 import { SourceStatus } from './features/content/SourceStatus';
 import { TableOfContents } from './features/navigation/TableOfContents';
 import { NavigationTab } from './core/types';
@@ -73,6 +73,17 @@ export default function App() {
   const activeDoc = useMemo(() => 
     flatDocs.find(d => d.id === activeDocId) || flatDocs[0], 
   [flatDocs, activeDocId]);
+
+  const sidebarGroups = useMemo(
+    () =>
+      buildDocsSidebarGroups({
+        section: currentSection,
+        activeDocId,
+        onSelect: setActiveDocId,
+        syncStatuses,
+      }),
+    [currentSection, activeDocId, syncStatuses]
+  );
 
   // 1. Load Content (Real Fetch)
   useEffect(() => {
@@ -181,14 +192,7 @@ export default function App() {
     <DocsLayout
       activeTab={activeTab}
       onTabChange={handleTabChange}
-      sidebar={
-        <DocsSidebar 
-          section={currentSection} 
-          activeDocId={activeDocId} 
-          onSelect={setActiveDocId}
-          syncStatuses={syncStatuses}
-        />
-      }
+      sidebarGroups={sidebarGroups}
       toc={
         <TableOfContents markdown={markdown} />
       }

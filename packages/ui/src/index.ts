@@ -4,6 +4,14 @@ export * from './config';
 // Components
 export { NetworkHeader } from './components/NetworkHeader';
 export { MegaMenu } from './components/MegaMenu';
+export {
+  ConsoleSidebar,
+} from './components/ConsoleSidebar';
+export type {
+  ConsoleSidebarGroup,
+  ConsoleSidebarItem,
+  ConsoleSidebarProps,
+} from './components/ConsoleSidebar';
 export { 
   Button, 
   Spinner, 

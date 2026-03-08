@@ -16,7 +16,6 @@ import Judiciary from './features/judiciary/Judiciary';
 
 export default function App() {
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [collapsed, setCollapsed] = useState(false);
 
   return (
     <ToastProvider>
@@ -30,14 +29,10 @@ export default function App() {
             <div className="flex flex-1 relative pt-9"> {/* pt-9 accounts for fixed header */}
               <Sidebar 
                 mobileOpen={mobileOpen} 
-                setMobileOpen={setMobileOpen} 
-                collapsed={collapsed} 
-                setCollapsed={setCollapsed}
+                setMobileOpen={setMobileOpen}
               />
               
-              <div className={`flex-1 flex flex-col min-h-[calc(100vh-2.25rem)] transition-all duration-200 ${
-                collapsed ? 'lg:pl-16' : 'lg:pl-56'
-              }`}>
+              <div className="flex-1 flex flex-col min-h-[calc(100vh-2.25rem)] transition-all duration-200 lg:pl-64">
                 <Header onMenuClick={() => setMobileOpen(true)} />
                 
                 <main className="flex-1 p-4 lg:p-6 overflow-x-hidden">

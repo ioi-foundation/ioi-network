@@ -2,18 +2,17 @@ import React, { useState } from 'react';
 import { Menu, Search } from 'lucide-react';
 import { NavigationTab } from '../core/types';
 import { SIDEBAR_DATA } from '../core/constants';
-// Refactored Import
-import { NetworkHeader } from '@ioi/ui';
+import { ConsoleSidebar, ConsoleSidebarGroup, NetworkHeader } from '@ioi/ui';
 
 interface DocsLayoutProps {
   children: React.ReactNode;
-  sidebar: React.ReactNode;
+  sidebarGroups: ConsoleSidebarGroup[];
   toc?: React.ReactNode;
   activeTab: NavigationTab;
   onTabChange: (tab: NavigationTab) => void;
 }
 
-export const DocsLayout = ({ children, sidebar, toc, activeTab, onTabChange }: DocsLayoutProps) => {
+export const DocsLayout = ({ children, sidebarGroups, toc, activeTab, onTabChange }: DocsLayoutProps) => {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   return (
@@ -23,25 +22,16 @@ export const DocsLayout = ({ children, sidebar, toc, activeTab, onTabChange }: D
       <NetworkHeader currentAppId="docs" />
 
       <div className="flex flex-1 relative">
-        {/* Sidebar */}
-        <aside className={`
-          fixed inset-y-0 left-0 z-50 w-72 bg-zinc-950 border-r border-zinc-800 transform transition-transform duration-200 lg:translate-x-0
-          top-9 /* Pushed down by NetworkHeader */
-          ${mobileOpen ? 'translate-x-0' : '-translate-x-full'}
-        `}>
-          {/* Sidebar Header - Logo removed, just context title */}
-          <div className="h-14 flex items-center px-4 border-b border-zinc-800 justify-between">
-            <span className="font-bold text-white tracking-tight">Docs Portal</span>
-            <span className="text-[10px] bg-zinc-900 border border-zinc-800 px-1.5 py-0.5 rounded text-zinc-500">v2.4</span>
-          </div>
-
-          <div className="p-4 overflow-y-auto h-[calc(100vh-3.5rem-2.25rem)]">
-            {sidebar}
-          </div>
-        </aside>
+        <ConsoleSidebar
+          mobileOpen={mobileOpen}
+          onCloseMobile={() => setMobileOpen(false)}
+          title="Docs Portal"
+          version="v2.4"
+          groups={sidebarGroups}
+        />
 
         {/* Main Content Wrapper */}
-        <div className="flex-1 lg:pl-72 flex flex-col min-h-[calc(100vh-2.25rem)] pt-9">
+        <div className="flex-1 lg:pl-64 flex flex-col min-h-[calc(100vh-2.25rem)] pt-9">
           
           {/* App Header (Tabs & Search) */}
           <header className="h-14 sticky top-9 z-40 bg-zinc-950/80 backdrop-blur-sm border-b border-zinc-800 flex items-center justify-between px-6">
